@@ -67,8 +67,8 @@ export default function App() {
     setCurrentPage(page)
   }
 
-  const handleAuthenticated = ({ email, remember }) => {
-    setAuthUser({ email, remember: Boolean(remember) })
+  const handleAuthenticated = ({ email, remember, token }) => {
+    setAuthUser({ email, remember: Boolean(remember), token })
     setCurrentPage('dashboard')
     setSidebarCollapsed(false)
   }

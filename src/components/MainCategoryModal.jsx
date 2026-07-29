@@ -63,7 +63,10 @@ export default function MainCategoryModal({
   const [selectedIconId, setSelectedIconId] = useState(null)
   const [iconColor, setIconColor] = useState('#22c55e')
   const [iconSize, setIconSize] = useState(18)
-  const [error, setError] = useState('')
+  const [parentError, setParentError] = useState('')
+  const [nameError, setNameError] = useState('')
+  const [iconError, setIconError] = useState('')
+  const [imageError, setImageError] = useState('')
 
   useEffect(() => {
     if (!open) return undefined
@@ -97,7 +100,10 @@ export default function MainCategoryModal({
     }
 
     setIconQuery('')
-    setError('')
+    setParentError('')
+    setNameError('')
+    setIconError('')
+    setImageError('')
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKeyDown = (event) => {
@@ -123,14 +129,14 @@ export default function MainCategoryModal({
   const selectImage = (file) => {
     if (!file) return
     if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
-      setError('Please upload a PNG, JPG, or WEBP image.')
+      setImageError('Please upload a PNG, JPG, or WEBP image.')
       return
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      setError('Image must be 10MB or smaller.')
+      setImageError('Image must be 10MB or smaller.')
       return
     }
-    setError('')
+    setImageError('')
     setImageRemoved(false)
     setImageFile(file)
     setImagePreview((current) => {
@@ -144,6 +150,7 @@ export default function MainCategoryModal({
     event.stopPropagation()
     setImageFile(null)
     setImageRemoved(true)
+    setImageError('')
     setImagePreview((current) => {
       if (current?.startsWith('blob:')) URL.revokeObjectURL(current)
       return ''
@@ -152,18 +159,37 @@ export default function MainCategoryModal({
 
   const clearIcon = () => {
     setSelectedIconId(null)
+    setIconError('')
   }
 
   const handleSubmit = (event) => {
     event.preventDefault()
+    setParentError('')
+    setNameError('')
+    setIconError('')
+    setImageError('')
     if (hasParent && !parent) {
-      setError(`Please select a ${parentLabel.toLowerCase()}.`)
+      setParentError(`Please select a ${parentLabel.toLowerCase()}.`)
       return
     }
     if (!name.trim()) {
-      setError('Please enter a name.')
+      setNameError('Please enter a name.')
       return
     }
+    if (!selectedIcon) {
+      setIconError('Please select an icon.')
+      return
+    }
+
+    const hasExistingImage = Boolean(item?.image || item?.imageUrl)
+    // Create mode: image必須
+    // Edit mode: ya to naya image upload ho, ya existing image ko keep kiya ho (imageRemoved === false)
+    const canSubmitWithImage = Boolean(imageFile) || (isEdit && hasExistingImage && !imageRemoved)
+    if (!canSubmitWithImage) {
+      setImageError('Please upload an image.')
+      return
+    }
+
     onSubmit({
       id: item?.id,
       name: name.trim(),
@@ -216,6 +242,7 @@ export default function MainCategoryModal({
                       <option key={option} value={option}>{option}</option>
                     ))}
                   </select>
+                  {parentError ? <p className="vendor-form-error mt-2">{parentError}</p> : null}
                 </div>
                 <div>
                   <label htmlFor={`${fieldId}-name`} className="vendor-field-label">Name</label>
@@ -228,6 +255,7 @@ export default function MainCategoryModal({
                     className="glass-input vendor-field-input"
                     autoFocus
                   />
+                  {nameError ? <p className="vendor-form-error mt-2">{nameError}</p> : null}
                 </div>
               </div>
             ) : (
@@ -242,6 +270,7 @@ export default function MainCategoryModal({
                   className="glass-input vendor-field-input"
                   autoFocus
                 />
+                {nameError ? <p className="vendor-form-error mt-2">{nameError}</p> : null}
               </div>
             )}
 
@@ -279,6 +308,7 @@ export default function MainCategoryModal({
                   </label>
                 )}
               </div>
+              {imageError ? <p className="vendor-form-error mt-2">{imageError}</p> : null}
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[1.7fr_1fr]">
@@ -335,6 +365,7 @@ export default function MainCategoryModal({
                     </button>
                   ))}
                 </div>
+                {iconError ? <p className="vendor-form-error mt-2">{iconError}</p> : null}
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
@@ -388,7 +419,6 @@ export default function MainCategoryModal({
               </div>
             </div>
 
-            {error ? <p className="vendor-form-error">{error}</p> : null}
           </div>
 
           <div className="vendor-modal-footer !justify-stretch gap-3">

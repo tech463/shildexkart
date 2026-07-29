@@ -2089,12 +2089,12 @@
     .vendor-form-error {
       margin-top: 0.25rem;
       border-radius: 0.75rem;
-      border: 1px solid rgba(248, 113, 113, 0.35);
-      background: rgba(248, 113, 113, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.45);
+      background: rgba(239, 68, 68, 0.14);
       padding: 0.65rem 0.85rem;
       font-size: 0.75rem;
       font-weight: 600;
-      color: #fca5a5;
+      color: #ef4444;
     }
 
     .date-filter-input {

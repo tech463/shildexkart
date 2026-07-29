@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
-import { BANNER_POSITIONS, BANNERS_DATA } from '../data/banners'
+import { BANNER_POSITIONS } from '../data/banners'
 import { PAGE_CONFIGS } from '../data/pages'
+import {
+  createBannerAPI,
+  deleteBannerAPI,
+  fetchBannersAPI,
+  setBannerStatusAPI,
+  updateBannerAPI,
+} from '../services/bannerService'
 
 function Icon({ path, className = 'h-4 w-4' }) {
   return (
@@ -43,6 +50,28 @@ function formatTimestamp(date = new Date()) {
     minute: '2-digit',
     hour12: true,
   }).replace(',', '')
+}
+
+function formatApiDate(value) {
+  if (!value) return ''
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).replace(',', '')
+}
+
+function buildImageUrl(image) {
+  if (!image) return ''
+  if (String(image).startsWith('http')) return image
+  // backend image field typically returns filename (based on Postman SS)
+  // Most setups serve uploads from /uploads (without /api).
+  return `http://localhost:5001/uploads/${image}`
 }
 
 function parseBannerDate(value) {
@@ -162,11 +191,21 @@ function BannerViewModal({ open, onClose, banner }) {
   )
 }
 
-function BannerModal({ open, onClose, onSubmit, banner = null }) {
+function BannerModal({
+  open,
+  onClose,
+  onSubmit,
+  banner = null,
+  positionOptions = null,
+  submitting = false,
+  apiError = '',
+}) {
   const isEdit = Boolean(banner)
-  const [position, setPosition] = useState(BANNER_POSITIONS[0])
+  const fallbackPosition = (positionOptions && positionOptions.length ? positionOptions[0] : BANNER_POSITIONS[0])
+  const [position, setPosition] = useState(fallbackPosition)
   const [mainCategory, setMainCategory] = useState(MAIN_CATEGORY_OPTIONS[0] || '')
   const [status, setStatus] = useState('Active')
+  const [title, setTitle] = useState('')
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState('')
   const [error, setError] = useState('')
@@ -175,15 +214,17 @@ function BannerModal({ open, onClose, onSubmit, banner = null }) {
     if (!open) return undefined
 
     if (banner) {
-      setPosition(banner.position || BANNER_POSITIONS[0])
+      setPosition(banner.position || fallbackPosition)
       setMainCategory(parseMainCategory(banner.categoryContext))
       setStatus(banner.active ? 'Active' : 'Inactive')
+      setTitle(banner.title || '')
       setImageFile(null)
       setImagePreview(banner.imageUrl || '')
     } else {
-      setPosition(BANNER_POSITIONS[0])
+      setPosition(fallbackPosition)
       setMainCategory(MAIN_CATEGORY_OPTIONS[0] || '')
       setStatus('Active')
+      setTitle('')
       setImageFile(null)
       setImagePreview('')
     }
@@ -199,7 +240,7 @@ function BannerModal({ open, onClose, onSubmit, banner = null }) {
       document.body.style.overflow = previousOverflow
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open, onClose, banner])
+  }, [open, onClose, banner, fallbackPosition])
 
   if (!open) return null
 
@@ -231,6 +272,10 @@ function BannerModal({ open, onClose, onSubmit, banner = null }) {
       setError('Please select a position.')
       return
     }
+    if (!String(title || '').trim()) {
+      setError('Title is required.')
+      return
+    }
     if (needsCategoryContext(position) && !mainCategory) {
       setError('Please select a main category.')
       return
@@ -239,6 +284,11 @@ function BannerModal({ open, onClose, onSubmit, banner = null }) {
     onSubmit({
       id: banner?.id,
       position,
+      title: String(title).trim(),
+      link: banner?.link || 'https://shieldxcart.com',
+      buttonText: banner?.buttonText || 'Shop Now',
+      text: banner?.text || 'Mega Sale',
+      sortOrder: banner?.sortOrder ?? 0,
       categoryContext: buildCategoryContext(position, mainCategory),
       active: status === 'Active',
       image: imageFile,
@@ -249,6 +299,11 @@ function BannerModal({ open, onClose, onSubmit, banner = null }) {
 
   const fieldPrefix = isEdit ? 'edit-banner' : 'add-banner'
   const showCategory = needsCategoryContext(position)
+
+  const imageError = /upload|Image must|banner image/i.test(error) ? error : ''
+  const positionError = /position/i.test(error) ? error : ''
+  const titleError = /Title is required/i.test(error) ? error : ''
+  const categoryError = /main category/i.test(error) ? error : ''
 
   return (
     <div className="vendor-modal-overlay" onClick={onClose} role="presentation">
@@ -298,6 +353,7 @@ function BannerModal({ open, onClose, onSubmit, banner = null }) {
                   </>
                 )}
               </label>
+              {imageError ? <p className="vendor-form-error mt-2">{imageError}</p> : null}
             </div>
 
             <div className={`grid gap-4 ${showCategory ? 'sm:grid-cols-2' : ''}`}>
@@ -309,10 +365,11 @@ function BannerModal({ open, onClose, onSubmit, banner = null }) {
                   onChange={(event) => setPosition(event.target.value)}
                   className="glass-input vendor-field-input"
                 >
-                  {BANNER_POSITIONS.map((option) => (
+                  {(positionOptions && positionOptions.length ? positionOptions : BANNER_POSITIONS).map((option) => (
                     <option key={option} value={option}>{option}</option>
                   ))}
                 </select>
+                {positionError ? <p className="vendor-form-error mt-2">{positionError}</p> : null}
               </div>
               {showCategory ? (
                 <div>
@@ -327,6 +384,7 @@ function BannerModal({ open, onClose, onSubmit, banner = null }) {
                       <option key={option} value={option}>{option}</option>
                     ))}
                   </select>
+                  {categoryError ? <p className="vendor-form-error mt-2">{categoryError}</p> : null}
                 </div>
               ) : null}
             </div>
@@ -344,15 +402,28 @@ function BannerModal({ open, onClose, onSubmit, banner = null }) {
               </select>
             </div>
 
-            {error ? <p className="vendor-form-error">{error}</p> : null}
+            <div>
+              <label htmlFor={`${fieldPrefix}-title`} className="vendor-field-label">Title</label>
+              <input
+                id={`${fieldPrefix}-title`}
+                type="text"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Enter banner title"
+                className="glass-input vendor-field-input"
+              />
+            </div>
+
+            {titleError ? <p className="vendor-form-error mt-2">{titleError}</p> : null}
+            {apiError ? <p className="vendor-form-error">{apiError}</p> : null}
           </div>
 
           <div className="vendor-modal-footer !justify-stretch gap-3">
             <button type="button" onClick={onClose} className="vendor-btn-cancel flex-1">
               Cancel
             </button>
-            <button type="submit" className="btn-glass vendor-btn-submit flex-1">
-              {isEdit ? 'Save Changes' : 'Add Banner'}
+            <button type="submit" className="btn-glass vendor-btn-submit flex-1" disabled={submitting}>
+              {submitting ? 'Adding...' : (isEdit ? 'Save Changes' : 'Add Banner')}
             </button>
           </div>
         </form>
@@ -362,7 +433,13 @@ function BannerModal({ open, onClose, onSubmit, banner = null }) {
 }
 
 export default function Banners({ onNavigate }) {
-  const [banners, setBanners] = useState(() => BANNERS_DATA.map((banner) => ({ ...banner })))
+  const [banners, setBanners] = useState([])
+  const [loadingBanners, setLoadingBanners] = useState(false)
+  const [positionOptions, setPositionOptions] = useState(BANNER_POSITIONS)
+  const [bannerSubmitting, setBannerSubmitting] = useState(false)
+  const [bannerApiError, setBannerApiError] = useState('')
+  const [bannerToastSuccess, setBannerToastSuccess] = useState('')
+  const [bannerToastError, setBannerToastError] = useState('')
   const [query, setQuery] = useState('')
   const [position, setPosition] = useState('')
   const [status, setStatus] = useState('')
@@ -372,6 +449,53 @@ export default function Banners({ onNavigate }) {
   const [editingBanner, setEditingBanner] = useState(null)
   const [viewingBanner, setViewingBanner] = useState(null)
   const [deletingBanner, setDeletingBanner] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      setLoadingBanners(true)
+      try {
+        const data = await fetchBannersAPI({ page: 1, limit: 10 })
+        const list = data?.data || data?.banners || []
+        const next = list.map((item) => ({
+          id: item.id ?? Date.now(),
+          title: item.title || '',
+          link: item.link || '',
+          buttonText: item.button_text || item.buttonText || '',
+          text: item.subtitle || item.text || '',
+          sortOrder: item.sort_order ?? item.sortOrder ?? 0,
+          imageUrl: buildImageUrl(item.image || item.imageUrl),
+          position: item.position || '',
+          categoryContext: item.subtitle ? `Subtitle: ${item.subtitle}` : 'None',
+          created: formatApiDate(item.created_at || item.created),
+          updated: formatApiDate(item.updated_at || item.updated),
+          active: typeof item.is_active === 'boolean' ? item.is_active : Boolean(item.active),
+        }))
+        if (cancelled) return
+        setBanners(next)
+        setPositionOptions([...new Set(next.map((b) => b.position).filter(Boolean))] || BANNER_POSITIONS)
+      } catch (err) {
+        if (cancelled) return
+        setBanners([])
+      } finally {
+        if (cancelled) return
+        setLoadingBanners(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!bannerToastSuccess && !bannerToastError) return undefined
+    const id = window.setTimeout(() => {
+      setBannerToastSuccess('')
+      setBannerToastError('')
+    }, 2500)
+    return () => window.clearTimeout(id)
+  }, [bannerToastSuccess, bannerToastError])
 
   const filteredBanners = useMemo(() => {
     const search = query.trim().toLowerCase()
@@ -385,75 +509,150 @@ export default function Banners({ onNavigate }) {
     ))
   }, [banners, query, position, status, startDate, endDate])
 
-  const refresh = () => {
+  const refresh = async () => {
     setQuery('')
     setPosition('')
     setStatus('')
     setStartDate('')
     setEndDate('')
+
+    setLoadingBanners(true)
+    try {
+      const data = await fetchBannersAPI({ page: 1, limit: 10 })
+      const list = data?.data || data?.banners || []
+      const next = list.map((item) => ({
+        id: item.id ?? Date.now(),
+        title: item.title || '',
+        link: item.link || '',
+        buttonText: item.button_text || item.buttonText || '',
+        text: item.subtitle || item.text || '',
+        sortOrder: item.sort_order ?? item.sortOrder ?? 0,
+        imageUrl: buildImageUrl(item.image || item.imageUrl),
+        position: item.position || '',
+        categoryContext: item.subtitle ? `Subtitle: ${item.subtitle}` : 'None',
+        created: formatApiDate(item.created_at || item.created),
+        updated: formatApiDate(item.updated_at || item.updated),
+        active: typeof item.is_active === 'boolean' ? item.is_active : Boolean(item.active),
+      }))
+      setBanners(next)
+      setPositionOptions([...new Set(next.map((b) => b.position).filter(Boolean))] || BANNER_POSITIONS)
+    } catch {
+      setBanners([])
+      setPositionOptions(BANNER_POSITIONS)
+    } finally {
+      setLoadingBanners(false)
+    }
   }
 
   const closeModal = () => {
     setModalOpen(false)
     setEditingBanner(null)
+    setBannerApiError('')
+    setBannerSubmitting(false)
   }
 
   const openAddModal = () => {
     setEditingBanner(null)
+    setBannerApiError('')
     setModalOpen(true)
   }
 
   const openEditModal = (banner) => {
     setEditingBanner(banner)
+    setBannerApiError('')
     setModalOpen(true)
   }
 
-  const toggleBanner = (id) => {
-    setBanners((current) => current.map((banner) => (
-      banner.id === id ? { ...banner, active: !banner.active } : banner
-    )))
+  const toggleBanner = async (id) => {
+    const banner = banners.find((b) => b.id === id)
+    const nextActive = banner ? !banner.active : true
+    try {
+      await setBannerStatusAPI(id, nextActive)
+      setBannerToastSuccess('Banner status updated successfully.')
+      setBannerToastError('')
+      await refresh()
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to update banner status.'
+      setBannerToastError(msg)
+      setBannerToastSuccess('')
+    }
   }
 
-  const deleteBanner = (id) => {
-    setBanners((current) => current.filter((banner) => banner.id !== id))
-    setDeletingBanner(null)
+  const deleteBanner = async (id) => {
+    try {
+      await deleteBannerAPI(id)
+      setBannerToastSuccess('Banner deleted successfully.')
+      setBannerToastError('')
+      setDeletingBanner(null)
+      await refresh()
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to delete banner.'
+      setBannerToastError(msg)
+      setBannerToastSuccess('')
+      setDeletingBanner(null)
+    }
   }
 
-  const addBanner = (payload) => {
-    const stamp = formatTimestamp()
-    const imageUrl = payload.image ? URL.createObjectURL(payload.image) : (payload.imageUrl || '')
-    setBanners((current) => [
-      {
-        id: Date.now(),
-        imageUrl,
-        position: payload.position,
-        categoryContext: payload.categoryContext,
-        created: stamp,
-        updated: stamp,
-        active: payload.active,
-      },
-      ...current,
-    ])
-    closeModal()
+  const addBanner = async (payload) => {
+    try {
+      setBannerSubmitting(true)
+      setBannerApiError('')
+      setBannerToastError('')
+      const formData = new FormData()
+      // Backend SS ke hisaab se required fields (defaults use kiye hain)
+      formData.append('link', 'https://shieldxcart.com')
+      formData.append('buttonText', 'Shop Now')
+      formData.append('text', 'Mega Sale')
+      formData.append('title', payload.title || 'Home Banner')
+      formData.append('position', payload.position)
+      formData.append('sortOrder', String(payload.sortOrder ?? 0))
+      if (payload.image) formData.append('image', payload.image)
+      else if (payload.imageUrl) formData.append('image', payload.imageUrl)
+
+      const data = await createBannerAPI(formData)
+      setBannerToastSuccess(data?.message || 'Banner added successfully.')
+      closeModal()
+      await refresh()
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to add banner.'
+      setBannerApiError(msg)
+      setBannerToastError(msg)
+      setBannerToastSuccess('')
+    } finally {
+      setBannerSubmitting(false)
+    }
   }
 
-  const updateBanner = (payload) => {
-    const stamp = formatTimestamp()
-    setBanners((current) => current.map((banner) => {
-      if (banner.id !== payload.id) return banner
-      const imageUrl = payload.image
-        ? URL.createObjectURL(payload.image)
-        : (payload.keepImage ? banner.imageUrl : (payload.imageUrl || banner.imageUrl))
-      return {
-        ...banner,
-        imageUrl,
-        position: payload.position,
-        categoryContext: payload.categoryContext,
-        active: payload.active,
-        updated: stamp,
-      }
-    }))
-    closeModal()
+  const updateBanner = async (payload) => {
+    try {
+      setBannerSubmitting(true)
+      setBannerApiError('')
+      const id = payload.id
+      const formData = new FormData()
+      formData.append('title', payload.title || 'Home Banner')
+      formData.append('buttonText', payload.buttonText || 'Shop Now')
+      formData.append('text', payload.text || 'Mega Sale')
+      formData.append('link', payload.link || 'https://shieldxcart.com')
+      formData.append('position', payload.position)
+      formData.append('sortOrder', String(payload.sortOrder ?? 0))
+      if (payload.image) formData.append('image', payload.image)
+
+      // is_active banner status ka alag endpoint hai, par update me bhi bhej dete hain
+      formData.append('is_active', payload.active ? 'true' : 'false')
+
+      const data = await updateBannerAPI(id, formData)
+      setBannerToastSuccess(data?.message || 'Banner updated successfully.')
+      setBannerToastError('')
+      closeModal()
+      await refresh()
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to update banner.'
+      setBannerApiError(msg)
+      setBannerToastError(msg)
+      setBannerToastSuccess('')
+    } finally {
+      setBannerSubmitting(false)
+    }
   }
 
   const handleModalSubmit = (payload) => {
@@ -483,6 +682,9 @@ export default function Banners({ onNavigate }) {
       <div className="neo-card glass-card p-5" style={{ '--accent': '#00A3FF' }}>
         <span className="card-accent" aria-hidden="true" />
 
+        {bannerToastSuccess ? <div className="notif-toast mb-4">{bannerToastSuccess}</div> : null}
+        {bannerToastError ? <div className="vendor-form-error mb-4">{bannerToastError}</div> : null}
+
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <h3 className="font-display text-sm font-bold tracking-wide text-shield">Banners List</h3>
           <div className="flex flex-wrap items-center gap-2">
@@ -504,7 +706,7 @@ export default function Banners({ onNavigate }) {
               className="glass-input rounded-xl px-3 py-2 text-sm"
             >
               <option value="">Position</option>
-              {BANNER_POSITIONS.map((option) => (
+              {(positionOptions && positionOptions.length ? positionOptions : BANNER_POSITIONS).map((option) => (
                 <option key={option} value={option}>{option}</option>
               ))}
             </select>
@@ -573,6 +775,7 @@ export default function Banners({ onNavigate }) {
                 <th>S.No</th>
                 <th>Image</th>
                 <th>Position</th>
+                <th>Title</th>
                 <th>Category Context</th>
                 <th>Status</th>
                 <th>Timestamp</th>
@@ -602,6 +805,7 @@ export default function Banners({ onNavigate }) {
                   <td>
                     <span className="banner-position-badge">{banner.position}</span>
                   </td>
+                  <td className="font-semibold text-slate-200">{banner.title || '—'}</td>
                   <td className="text-slate-400">{banner.categoryContext}</td>
                   <td>
                     <div className="flex items-center gap-2">
@@ -663,6 +867,9 @@ export default function Banners({ onNavigate }) {
         onClose={closeModal}
         onSubmit={handleModalSubmit}
         banner={editingBanner}
+        positionOptions={positionOptions}
+        submitting={bannerSubmitting}
+        apiError={bannerApiError}
       />
       <BannerViewModal
         open={Boolean(viewingBanner)}

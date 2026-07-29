@@ -1,7 +1,36 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import MainCategoryModal from '../components/MainCategoryModal'
 import { PAGE_CONFIGS } from '../data/pages'
+import {
+  createMainCategory,
+  deleteMainCategory,
+  fetchMainCategories,
+  toggleMainCategoryStatus,
+  updateMainCategory,
+} from '../store/slices/mainCategorySlice'
+import {
+  createCategory,
+  deleteCategory,
+  fetchCategories,
+  toggleCategoryStatus,
+  updateCategory,
+} from '../store/slices/categorySlice'
+import {
+  createSubCategory,
+  deleteSubCategory,
+  fetchSubCategories,
+  toggleSubCategoryStatus,
+  updateSubCategory,
+} from '../store/slices/subCategorySlice'
+import {
+  createUnit,
+  deleteUnit,
+  fetchUnits,
+  toggleUnitStatus,
+  updateUnit,
+} from '../store/slices/unitSlice'
 
 function Icon({ path, className = 'h-4 w-4' }) {
   return (
@@ -135,9 +164,25 @@ function EntityModal({ open, onClose, onSubmit, config, item = null }) {
       setError(`Please enter a ${config.nameLabel.toLowerCase()}.`)
       return
     }
+
+    // Units page ke liye extra required validation
+    // (Backend "Unit Name and Symbol are required." type error bhej raha hai.)
+    if (config?.entityLabel === 'Unit') {
+      const symbolRaw = fields?.symbol
+      const typeRaw = fields?.type
+      if (!String(symbolRaw ?? '').trim()) {
+        setError('Please enter symbol.')
+        return
+      }
+      if (!String(typeRaw ?? '').trim()) {
+        setError('Please enter type.')
+        return
+      }
+    }
+
     const payload = {
       id: item?.id,
-      name: String(fields.name).trim(),
+      name: String(fields.name || '').trim(),
       active,
       fields: {},
     }
@@ -148,7 +193,12 @@ function EntityModal({ open, onClose, onSubmit, config, item = null }) {
         const parsed = Number(raw)
         payload.fields[column] = Number.isFinite(parsed) ? parsed : 0
       } else {
-        payload.fields[column] = String(raw ?? '').trim() || '—'
+        const cleaned = String(raw ?? '').trim()
+        if (config?.entityLabel === 'Unit') {
+          payload.fields[column] = cleaned // Units me empty ko '' bhejenge; slice validation reject karega
+        } else {
+          payload.fields[column] = cleaned || '—'
+        }
       }
     })
     onSubmit(payload)
@@ -156,7 +206,7 @@ function EntityModal({ open, onClose, onSubmit, config, item = null }) {
 
   return (
     <div className="vendor-modal-overlay" onClick={onClose} role="presentation">
-      <div className="vendor-modal glass-card" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+      <div className="vendor-modal glass-card p-6" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
             <h3 className="font-display text-lg font-bold tracking-wide text-shield">
@@ -206,7 +256,7 @@ function EntityModal({ open, onClose, onSubmit, config, item = null }) {
               <span className="toggle-slider" />
             </label>
           </div>
-          {error ? <p className="text-xs font-medium text-red-400">{error}</p> : null}
+          {error ? <p className="vendor-form-error mt-3">{error}</p> : null}
           <div className="flex items-center justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-white/5">Cancel</button>
             <button type="submit" className="btn-glass rounded-xl px-4 py-2 text-sm font-semibold">
@@ -287,6 +337,16 @@ function EntityViewModal({ open, onClose, item, config }) {
 
 export default function EntityListPage({ pageId, onNavigate }) {
   const config = PAGE_CONFIGS[pageId]
+  const dispatch = useDispatch()
+  const mainCategoryState = useSelector((state) => state.mainCategory)
+  const categoryState = useSelector((state) => state.category)
+  const isMainCategoryPage = pageId === 'main-category'
+  const isCategoryPage = pageId === 'category'
+  const subCategoryState = useSelector((state) => state.subCategory)
+  const isSubCategoryPage = pageId === 'sub-category'
+  const unitState = useSelector((state) => state.unit)
+  const isUnitsPage = pageId === 'units'
+
   const [rows, setRows] = useState(() => (config?.rows || []).map((row) => ({ ...row })))
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
@@ -297,8 +357,122 @@ export default function EntityListPage({ pageId, onNavigate }) {
   const [viewingRow, setViewingRow] = useState(null)
   const [deletingRow, setDeletingRow] = useState(null)
 
+  const [toastSuccess, setToastSuccess] = useState('')
+  const [toastError, setToastError] = useState('')
+
   useEffect(() => {
-    setRows((config?.rows || []).map((row) => ({ ...row })))
+    if (!toastSuccess && !toastError) return undefined
+    const t = setTimeout(() => {
+      setToastSuccess('')
+      setToastError('')
+    }, 3000)
+    return () => clearTimeout(t)
+  }, [toastSuccess, toastError])
+
+  const normalizeMainCategoryRows = (items = []) => (
+    items.map((item) => {
+      const name = item?.name ?? ''
+      const slug =
+        item?.slug ??
+        String(name).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+
+      const createdRaw = item?.created_at ?? item?.created ?? item?.createdAt
+      const updatedRaw = item?.updated_at ?? item?.updated ?? item?.updatedAt
+
+      const created = createdRaw ? formatTimestamp(new Date(createdRaw)) : ''
+      const updated = updatedRaw ? formatTimestamp(new Date(updatedRaw)) : ''
+
+      return {
+        id: item?.id ?? item?._id ?? Date.now(),
+        name,
+        slug,
+        items: item?.items ?? 0,
+        icon: item?.icon ? { id: item.icon, label: item.icon, color: '#22c55e', size: 18 } : null,
+        sort_order: item?.sort_order ?? item?.sortOrder ?? 0,
+        active: item?.is_active ?? item?.active ?? false,
+        created,
+        updated,
+      }
+    })
+  )
+
+  const normalizeCategoryRows = (items = []) => (
+    items.map((item) => {
+      const name = item?.name ?? ''
+      const createdRaw = item?.created_at ?? item?.created ?? item?.createdAt
+      const updatedRaw = item?.updated_at ?? item?.updated ?? item?.updatedAt
+
+      const created = createdRaw ? formatTimestamp(new Date(createdRaw)) : ''
+      const updated = updatedRaw ? formatTimestamp(new Date(updatedRaw)) : ''
+
+      const parentName = item?.main_category?.name ?? item?.parent ?? ''
+
+      return {
+        id: item?.id ?? item?._id ?? Date.now(),
+        name,
+        parent: parentName,
+        items: item?.items ?? 0,
+        icon: item?.icon ? { id: item.icon, label: item.icon, color: '#22c55e', size: 18 } : null,
+        sort_order: item?.sort_order ?? item?.sortOrder ?? 0,
+        active: item?.is_active ?? item?.active ?? false,
+        created,
+        updated,
+      }
+    })
+  )
+
+  const normalizeSubCategoryRows = (items = []) => (
+    items.map((item) => {
+      const name = item?.name ?? ''
+      const createdRaw = item?.created_at ?? item?.created ?? item?.createdAt
+      const updatedRaw = item?.updated_at ?? item?.updated ?? item?.updatedAt
+
+      const created = createdRaw ? formatTimestamp(new Date(createdRaw)) : ''
+      const updated = updatedRaw ? formatTimestamp(new Date(updatedRaw)) : ''
+
+      const parentName =
+        item?.category?.name ?? item?.category_name ?? item?.parent ?? ''
+
+      return {
+        id: item?.id ?? item?._id ?? Date.now(),
+        name,
+        parent: parentName,
+        items: item?.items ?? 0,
+        icon: item?.icon ? { id: item.icon, label: item.icon, color: '#22c55e', size: 18 } : null,
+        sort_order: item?.sort_order ?? item?.sortOrder ?? 0,
+        active: item?.is_active ?? item?.active ?? false,
+        created,
+        updated,
+      }
+    })
+  )
+
+  const normalizeUnitRows = (items = []) => (
+    items.map((item) => {
+      const name = item?.name ?? ''
+      const createdRaw = item?.created_at ?? item?.created ?? item?.createdAt
+      const updatedRaw = item?.updated_at ?? item?.updated ?? item?.updatedAt
+
+      const created = createdRaw ? formatTimestamp(new Date(createdRaw)) : ''
+      const updated = updatedRaw ? formatTimestamp(new Date(updatedRaw)) : ''
+
+      return {
+        id: item?.id ?? item?._id ?? Date.now(),
+        name,
+        symbol: item?.symbol ?? '—',
+        type: item?.type ?? '—',
+        active: item?.is_active ?? item?.active ?? false,
+        sort_order: item?.sort_order ?? item?.sortOrder ?? 0,
+        created,
+        updated,
+      }
+    })
+  )
+
+  useEffect(() => {
+    if (!isMainCategoryPage && !isCategoryPage && !isSubCategoryPage && !isUnitsPage) {
+      setRows((config?.rows || []).map((row) => ({ ...row })))
+    }
     setQuery('')
     setStatus('')
     setStartDate('')
@@ -307,7 +481,47 @@ export default function EntityListPage({ pageId, onNavigate }) {
     setEditingRow(null)
     setViewingRow(null)
     setDeletingRow(null)
-  }, [pageId, config])
+  }, [pageId, config, isMainCategoryPage, isCategoryPage, isSubCategoryPage, isUnitsPage])
+
+  useEffect(() => {
+    if (!isMainCategoryPage && !isCategoryPage) return
+    dispatch(fetchMainCategories({ page: 1, limit: 10 }))
+  }, [dispatch, isMainCategoryPage, isCategoryPage])
+
+  useEffect(() => {
+    if (!isMainCategoryPage) return
+    setRows(normalizeMainCategoryRows(mainCategoryState?.rows || []))
+  }, [isMainCategoryPage, mainCategoryState?.rows])
+
+  useEffect(() => {
+    if (!isCategoryPage && !isSubCategoryPage) return
+    dispatch(fetchCategories({ page: 1, limit: 10 }))
+  }, [dispatch, isCategoryPage, isSubCategoryPage])
+
+  useEffect(() => {
+    if (!isCategoryPage) return
+    setRows(normalizeCategoryRows(categoryState?.rows || []))
+  }, [isCategoryPage, categoryState?.rows])
+
+  useEffect(() => {
+    if (!isSubCategoryPage) return
+    dispatch(fetchSubCategories({ page: 1, limit: 10 }))
+  }, [dispatch, isSubCategoryPage])
+
+  useEffect(() => {
+    if (!isSubCategoryPage) return
+    setRows(normalizeSubCategoryRows(subCategoryState?.rows || []))
+  }, [isSubCategoryPage, subCategoryState?.rows])
+
+  useEffect(() => {
+    if (!isUnitsPage) return
+    dispatch(fetchUnits({ page: 1, limit: 10 }))
+  }, [dispatch, isUnitsPage])
+
+  useEffect(() => {
+    if (!isUnitsPage) return
+    setRows(normalizeUnitRows(unitState?.rows || []))
+  }, [isUnitsPage, unitState?.rows])
 
   const filteredRows = useMemo(() => {
     const search = query.trim().toLowerCase()
@@ -317,6 +531,16 @@ export default function EntityListPage({ pageId, onNavigate }) {
       && isWithinDateRange(row, startDate, endDate)
     ))
   }, [rows, query, status, startDate, endDate])
+
+  // Hooks must be called unconditionally; these memos are used by category modal below.
+  const mainCategoryOptions = useMemo(
+    () => PAGE_CONFIGS['main-category']?.rows?.map((row) => row.name) || [],
+    [],
+  )
+  const categoryOptions = useMemo(
+    () => PAGE_CONFIGS.category?.rows?.map((row) => row.name) || [],
+    [],
+  )
 
   if (!config) {
     return (
@@ -333,15 +557,81 @@ export default function EntityListPage({ pageId, onNavigate }) {
     setStatus('')
     setStartDate('')
     setEndDate('')
+    if (isMainCategoryPage) {
+      dispatch(fetchMainCategories({ page: 1, limit: 10 }))
+    }
+    if (isCategoryPage) {
+      dispatch(fetchCategories({ page: 1, limit: 10 }))
+    }
+    if (isSubCategoryPage) {
+      dispatch(fetchSubCategories({ page: 1, limit: 10 }))
+    }
+    if (isUnitsPage) {
+      dispatch(fetchUnits({ page: 1, limit: 10 }))
+    }
   }
 
-  const toggleRow = (id) => {
-    setRows((current) => current.map((row) => (row.id === id ? { ...row, active: !row.active } : row)))
+  const toggleRow = async (id, currentActive) => {
+    if (!isMainCategoryPage && !isCategoryPage && !isSubCategoryPage && !isUnitsPage) {
+      setRows((current) => current.map((row) => (row.id === id ? { ...row, active: !row.active } : row)))
+      return
+    }
+
+    try {
+      if (isMainCategoryPage) {
+        await dispatch(toggleMainCategoryStatus({ id, isActive: !currentActive })).unwrap()
+        setToastSuccess('Main Category status updated.')
+        await dispatch(fetchMainCategories({ page: 1, limit: 10 }))
+      } else if (isCategoryPage) {
+        await dispatch(toggleCategoryStatus({ id, isActive: !currentActive })).unwrap()
+        setToastSuccess('Category status updated.')
+        await dispatch(fetchCategories({ page: 1, limit: 10 }))
+      } else if (isSubCategoryPage) {
+        await dispatch(toggleSubCategoryStatus({ id, isActive: !currentActive })).unwrap()
+        setToastSuccess('Sub Category status updated.')
+        await dispatch(fetchSubCategories({ page: 1, limit: 10 }))
+      } else if (isUnitsPage) {
+        await dispatch(toggleUnitStatus({ id, isActive: !currentActive })).unwrap()
+        setToastSuccess('Unit status updated.')
+        await dispatch(fetchUnits({ page: 1, limit: 10 }))
+      }
+    } catch (error) {
+      setToastError(error || 'Failed to update status.')
+    }
   }
 
-  const deleteRow = (id) => {
-    setRows((current) => current.filter((row) => row.id !== id))
-    setDeletingRow(null)
+  const deleteRow = async (id) => {
+    if (!isMainCategoryPage && !isCategoryPage && !isSubCategoryPage && !isUnitsPage) {
+      setRows((current) => current.filter((row) => row.id !== id))
+      setDeletingRow(null)
+      return
+    }
+
+    try {
+      if (isMainCategoryPage) {
+        await dispatch(deleteMainCategory(id)).unwrap()
+        setToastSuccess('Main Category deleted successfully.')
+        setDeletingRow(null)
+        await dispatch(fetchMainCategories({ page: 1, limit: 10 }))
+      } else if (isCategoryPage) {
+        await dispatch(deleteCategory(id)).unwrap()
+        setToastSuccess('Category deleted successfully.')
+        setDeletingRow(null)
+        await dispatch(fetchCategories({ page: 1, limit: 10 }))
+      } else if (isSubCategoryPage) {
+        await dispatch(deleteSubCategory(id)).unwrap()
+        setToastSuccess('Sub Category deleted successfully.')
+        setDeletingRow(null)
+        await dispatch(fetchSubCategories({ page: 1, limit: 10 }))
+      } else if (isUnitsPage) {
+        await dispatch(deleteUnit(id)).unwrap()
+        setToastSuccess('Unit deleted successfully.')
+        setDeletingRow(null)
+        await dispatch(fetchUnits({ page: 1, limit: 10 }))
+      }
+    } catch (error) {
+      setToastError(error || 'Failed to delete item.')
+    }
   }
 
   const closeModal = () => {
@@ -420,32 +710,265 @@ export default function EntityListPage({ pageId, onNavigate }) {
     closeModal()
   }
 
-  const handleCategorySubmit = (payload) => {
+  const handleCategorySubmit = async (payload) => {
+    // Sub Category (MASTER) API
+    if (isSubCategoryPage) {
+      try {
+        if (!payload?.parent) {
+          setToastError('Please select a Category.')
+          return
+        }
+
+        if (!payload?.icon) {
+          setToastError('Please select an icon.')
+          return
+        }
+
+        const hasImage = payload?.image instanceof File || payload?.keepImage === true
+        if (!hasImage) {
+          setToastError('Please upload an image.')
+          return
+        }
+
+        const category = categoryState?.rows?.find((c) => c?.name === payload.parent)
+        if (!category?.id) {
+          setToastError('Selected Category not found.')
+          return
+        }
+
+        const existing = rows.find((r) => r.id === payload.id)
+        const sortOrder = existing?.sort_order ?? 0
+
+        if (payload.id) {
+          await dispatch(
+            updateSubCategory({
+              id: payload.id,
+              payload: {
+                categoryId: category.id,
+                name: payload.name,
+                icon: payload.icon,
+                sortOrder,
+                image: payload.image || null,
+                keepImage: payload.keepImage,
+              },
+            })
+          ).unwrap()
+          setToastSuccess('Sub Category updated successfully.')
+        } else {
+          await dispatch(
+            createSubCategory({
+              categoryId: category.id,
+              name: payload.name,
+              icon: payload.icon,
+              sortOrder: sortOrder || 0,
+              image: payload.image || null,
+            })
+          ).unwrap()
+          setToastSuccess('Sub Category created successfully.')
+        }
+
+        closeModal()
+        await dispatch(fetchSubCategories({ page: 1, limit: 10 }))
+      } catch (error) {
+        setToastError(error || 'Failed to submit Sub Category.')
+      }
+      return
+    }
+
+    // Category (MASTER) API
+    if (isCategoryPage) {
+      try {
+        if (!payload?.parent) {
+          setToastError('Please select a Main Category.')
+          return
+        }
+
+        if (!payload?.icon) {
+          setToastError('Please select an icon.')
+          return
+        }
+
+        const hasImage = payload?.image instanceof File || payload?.keepImage === true
+        if (!hasImage) {
+          setToastError('Please upload an image.')
+          return
+        }
+
+        const mainCat = mainCategoryState?.rows?.find((c) => c?.name === payload.parent)
+        if (!mainCat?.id) {
+          setToastError('Selected Main Category not found.')
+          return
+        }
+
+        const existing = rows.find((r) => r.id === payload.id)
+        const sortOrder = existing?.sort_order ?? 0
+
+        if (payload.id) {
+          await dispatch(
+            updateCategory({
+              id: payload.id,
+              payload: {
+                mainCategoryId: mainCat.id,
+                name: payload.name,
+                icon: payload.icon,
+                sortOrder,
+                image: payload.image || null,
+                keepImage: payload.keepImage,
+              },
+            })
+          ).unwrap()
+          setToastSuccess('Category updated successfully.')
+        } else {
+          await dispatch(
+            createCategory({
+              mainCategoryId: mainCat.id,
+              name: payload.name,
+              icon: payload.icon,
+              sortOrder: sortOrder || 0,
+              image: payload.image || null,
+            })
+          ).unwrap()
+          setToastSuccess('Category created successfully.')
+        }
+
+        closeModal()
+        await dispatch(fetchCategories({ page: 1, limit: 10 }))
+      } catch (error) {
+        setToastError(error || 'Failed to submit Category.')
+      }
+      return
+    }
+
+    // Main Category (MASTER) API
+    if (isMainCategoryPage) {
+      try {
+        if (!payload?.icon) {
+          setToastError('Please select an icon.')
+          return
+        }
+
+        const hasImage = payload?.image instanceof File || payload?.keepImage === true
+        if (!hasImage) {
+          setToastError('Please upload an image.')
+          return
+        }
+
+        const existing = rows.find((r) => r.id === payload.id)
+        const sortOrder = existing?.sort_order ?? 0
+
+        if (payload.id) {
+          await dispatch(
+            updateMainCategory({
+              id: payload.id,
+              payload: {
+                name: payload.name,
+                icon: payload.icon,
+                sortOrder,
+                image: payload.image || null,
+                keepImage: payload.keepImage,
+                active: payload.active,
+                status: payload.status,
+              },
+            })
+          ).unwrap()
+          setToastSuccess('Main Category updated successfully.')
+        } else {
+          await dispatch(
+            createMainCategory({
+              name: payload.name,
+              icon: payload.icon,
+              sortOrder: sortOrder || 0,
+              image: payload.image || null,
+              active: payload.active,
+              status: payload.status,
+            })
+          ).unwrap()
+          setToastSuccess('Main Category created successfully.')
+        }
+
+        closeModal()
+        await dispatch(fetchMainCategories({ page: 1, limit: 10 }))
+      } catch (error) {
+        setToastError(error || 'Failed to submit Main Category.')
+      }
+      return
+    }
+
+    // Other pages: existing mock CRUD
     if (payload.id) updateRow(payload)
     else addRow(payload)
   }
 
-  const handleEntitySubmit = (payload) => {
+  const handleEntitySubmit = async (payload) => {
+    if (isUnitsPage) {
+      try {
+        const symbolRaw = payload?.fields?.symbol
+        const typeRaw = payload?.fields?.type
+        const symbol = String(symbolRaw ?? '').trim()
+        const type = String(typeRaw ?? '').trim()
+
+        const existing = rows.find((r) => r.id === payload.id)
+        const sortOrder = existing?.sort_order ?? 0
+
+        if (!symbol || symbol === '—') {
+          setToastError('Please enter symbol.')
+          return
+        }
+        if (!type || type === '—') {
+          setToastError('Please enter type.')
+          return
+        }
+
+        if (payload.id) {
+          await dispatch(
+            updateUnit({
+              id: payload.id,
+              payload: {
+                name: payload.name,
+                symbol: payload.fields.symbol,
+                type: payload.fields.type,
+                sortOrder,
+              },
+            }),
+          ).unwrap()
+          setToastSuccess('Unit updated successfully.')
+        } else {
+          await dispatch(
+            createUnit({
+              name: payload.name,
+              symbol: payload.fields.symbol,
+              type: payload.fields.type,
+              sortOrder: 0,
+            }),
+          ).unwrap()
+          setToastSuccess('Unit created successfully.')
+        }
+
+        closeModal()
+        await dispatch(fetchUnits({ page: 1, limit: 10 }))
+      } catch (error) {
+        setToastError(error || 'Failed to submit Unit.')
+      }
+      return
+    }
+
     if (payload.id) updateRow(payload)
     else addRow(payload)
   }
-
-  const mainCategoryOptions = useMemo(
-    () => PAGE_CONFIGS['main-category']?.rows?.map((row) => row.name) || [],
-    [],
-  )
-  const categoryOptions = useMemo(
-    () => PAGE_CONFIGS.category?.rows?.map((row) => row.name) || [],
-    [],
-  )
   const useCategoryModal = pageId === 'main-category' || pageId === 'category' || pageId === 'sub-category'
 
   const categoryModalProps = (() => {
     if (pageId === 'category') {
-      return { title: 'Category', parentLabel: 'Main Category', parentOptions: mainCategoryOptions }
+      const mainCategoryOptionsForModal = mainCategoryState?.rows?.length
+        ? mainCategoryState.rows.map((row) => row?.name).filter(Boolean)
+        : mainCategoryOptions
+      return { title: 'Category', parentLabel: 'Main Category', parentOptions: mainCategoryOptionsForModal }
     }
     if (pageId === 'sub-category') {
-      return { title: 'Sub Category', parentLabel: 'Category', parentOptions: categoryOptions }
+      const categoryOptionsForModal = categoryState?.rows?.length
+        ? categoryState.rows.map((row) => row?.name).filter(Boolean)
+        : categoryOptions
+      return { title: 'Sub Category', parentLabel: 'Category', parentOptions: categoryOptionsForModal }
     }
     return { title: 'Main Category', parentLabel: 'Main Category', parentOptions: null }
   })()
@@ -463,6 +986,8 @@ export default function EntityListPage({ pageId, onNavigate }) {
 
       <div className="neo-card glass-card p-5" style={{ '--accent': config.accent }}>
         <span className="card-accent" aria-hidden="true" />
+        {toastSuccess ? <div className="notif-toast mb-4">{toastSuccess}</div> : null}
+        {toastError ? <div className="vendor-form-error mb-4">{toastError}</div> : null}
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <h3 className="font-display text-sm font-bold tracking-wide text-shield">{config.listTitle}</h3>
           <div className="flex flex-wrap items-center gap-2">
@@ -522,7 +1047,7 @@ export default function EntityListPage({ pageId, onNavigate }) {
                   <td>
                     <div className="flex items-center gap-2">
                       <label className="toggle-switch">
-                        <input type="checkbox" checked={row.active} onChange={() => toggleRow(row.id)} />
+                        <input type="checkbox" checked={row.active} onChange={() => toggleRow(row.id, row.active)} />
                         <span className="toggle-slider" />
                       </label>
                       <span className={`text-xs font-semibold ${row.active ? 'text-emerald-400' : 'text-slate-500'}`}>
