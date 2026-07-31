@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
-import { VENDORS_DATA } from '../data/vendors'
+import { fetchVendorsAPI, setVendorStatusAPI } from '../services/vendorService'
 
 function Icon({ path, paths: pathList, className = 'h-4 w-4' }) {
   const segments = pathList || (path ? path.split(' M').map((segment, index) => (index === 0 ? segment : `M${segment}`)) : [])
@@ -441,7 +441,7 @@ function VendorModal({ open, onClose, onSubmit, vendor = null }) {
 }
 
 export default function Vendors({ onNavigate }) {
-  const [vendors, setVendors] = useState(() => VENDORS_DATA.map((vendor) => ({ ...vendor })))
+  const [vendors, setVendors] = useState([])
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
   const [startDate, setStartDate] = useState('')
@@ -449,6 +449,61 @@ export default function Vendors({ onNavigate }) {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingVendor, setEditingVendor] = useState(null)
   const [deletingVendor, setDeletingVendor] = useState(null)
+  const [loadingVendors, setLoadingVendors] = useState(false)
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+  const [toastSuccess, setToastSuccess] = useState('')
+  const [toastError, setToastError] = useState('')
+
+  useEffect(() => {
+    if (!toastSuccess && !toastError) return undefined
+    const t = setTimeout(() => {
+      setToastSuccess('')
+      setToastError('')
+    }, 3000)
+    return () => clearTimeout(t)
+  }, [toastSuccess, toastError])
+
+  const normalizeVendors = (items = []) => items.map((v, idx) => {
+    const name = v?.name ?? ''
+    const initials = getInitials(name)
+    const color = AVATAR_COLORS[idx % AVATAR_COLORS.length]
+
+    const createdRaw = v?.created_at ?? v?.created ?? v?.createdAt
+    const updatedRaw = v?.updated_at ?? v?.updated ?? v?.updatedAt
+
+    return {
+      id: v?.id ?? v?._id ?? Date.now() + idx,
+      name,
+      email: v?.email ?? '',
+      phone: v?.phone ?? v?.phoneNumber ?? '',
+      // UI mock me only needs these fields for filters + table render
+      active: Boolean(v?.is_active ?? v?.active),
+      created: createdRaw ? formatTimestamp(new Date(createdRaw)) : '',
+      updated: updatedRaw ? formatTimestamp(new Date(updatedRaw)) : '',
+      avatar: initials,
+      color,
+    }
+  })
+
+  const loadVendors = async () => {
+    setLoadingVendors(true)
+    setToastError('')
+    try {
+      const data = await fetchVendorsAPI()
+      const vendorsData = data?.vendors ?? data?.data?.vendors ?? data?.result?.vendors ?? []
+      setVendors(normalizeVendors(vendorsData))
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to load vendors.'
+      setToastError(msg)
+    } finally {
+      setLoadingVendors(false)
+    }
+  }
+
+  useEffect(() => {
+    loadVendors()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const filteredVendors = useMemo(() => {
     const search = query.trim().toLowerCase()
@@ -464,6 +519,7 @@ export default function Vendors({ onNavigate }) {
     setStatus('')
     setStartDate('')
     setEndDate('')
+    loadVendors()
   }
 
   const closeModal = () => {
@@ -481,10 +537,25 @@ export default function Vendors({ onNavigate }) {
     setModalOpen(true)
   }
 
-  const toggleVendor = (id) => {
-    setVendors((current) => current.map((vendor) => (
-      vendor.id === id ? { ...vendor, active: !vendor.active } : vendor
-    )))
+  const toggleVendor = async (id) => {
+    const vendor = vendors.find((v) => v.id === id)
+    if (!vendor) return
+    if (statusUpdatingId) return
+
+    const newActive = !vendor.active
+    setStatusUpdatingId(id)
+    setToastError('')
+    try {
+      const res = await setVendorStatusAPI({ id, isActive: newActive })
+      setToastSuccess(res?.message || (newActive ? 'Vendor activated successfully.' : 'Vendor deactivated successfully.'))
+      // Backend ke response ke according UI ko sync rakhne ke liye always refetch karte hain.
+      await loadVendors()
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Status update failed.'
+      setToastError(msg)
+    } finally {
+      setStatusUpdatingId(null)
+    }
   }
 
   const deleteVendor = (id) => {
@@ -648,6 +719,9 @@ export default function Vendors({ onNavigate }) {
           </div>
         </div>
 
+        {toastSuccess ? <div className="notif-toast mb-4">{toastSuccess}</div> : null}
+        {toastError ? <div className="vendor-form-error mb-4">{toastError}</div> : null}
+
         <div className="overflow-x-auto rounded-xl border border-white/5">
           <table className="vendors-table data-table w-full min-w-[1100px] text-left text-sm">
             <thead>
@@ -664,7 +738,12 @@ export default function Vendors({ onNavigate }) {
               </tr>
             </thead>
             <tbody>
-              {filteredVendors.map((vendor, index) => (
+              {loadingVendors ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-slate-400">Loading vendors...</td>
+                </tr>
+              ) : (
+                filteredVendors.map((vendor, index) => (
                 <tr key={vendor.id}>
                   <td><input type="checkbox" className="rounded border-white/20 bg-white/5" /></td>
                   <td className="text-slate-400">{index + 1}</td>
@@ -686,7 +765,12 @@ export default function Vendors({ onNavigate }) {
                   <td>
                     <div className="flex items-center gap-2">
                       <label className="toggle-switch">
-                        <input type="checkbox" checked={vendor.active} onChange={() => toggleVendor(vendor.id)} />
+                        <input
+                          type="checkbox"
+                          checked={vendor.active}
+                          disabled={loadingVendors || statusUpdatingId === vendor.id}
+                          onChange={() => toggleVendor(vendor.id)}
+                        />
                         <span className="toggle-slider" />
                       </label>
                       <span className={`vendor-status-label text-xs font-semibold ${vendor.active ? 'text-emerald-400' : 'text-slate-500'}`}>
@@ -729,7 +813,8 @@ export default function Vendors({ onNavigate }) {
                     </div>
                   </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ALL_USERS_DATA } from '../data/allUsers'
+import { fetchUsersAPI, setUserStatusAPI } from '../services/userService'
 
 function Icon({ path, paths: pathList, className = 'h-4 w-4' }) {
   const segments = pathList || (path ? path.split(' M').map((segment, index) => (index === 0 ? segment : `M${segment}`)) : [])
@@ -447,7 +447,7 @@ function DeleteUserModal({ open, onClose, onConfirm, member }) {
 }
 
 export default function AllUsers({ onNavigate }) {
-  const [members, setMembers] = useState(() => ALL_USERS_DATA.map((member) => ({ ...member })))
+  const [members, setMembers] = useState([])
   const [query, setQuery] = useState('')
   const [role, setRole] = useState('')
   const [status, setStatus] = useState('')
@@ -456,6 +456,60 @@ export default function AllUsers({ onNavigate }) {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingMember, setEditingMember] = useState(null)
   const [deletingMember, setDeletingMember] = useState(null)
+  const [loadingMembers, setLoadingMembers] = useState(false)
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+  const [toastSuccess, setToastSuccess] = useState('')
+  const [toastError, setToastError] = useState('')
+
+  useEffect(() => {
+    if (!toastSuccess && !toastError) return undefined
+    const t = setTimeout(() => {
+      setToastSuccess('')
+      setToastError('')
+    }, 3000)
+    return () => clearTimeout(t)
+  }, [toastSuccess, toastError])
+
+  const normalizeMembers = (items = []) => items.map((u, idx) => {
+    const name = u?.name ?? ''
+    const roleValue = u?.role ?? u?.userRole ?? u?.type ?? u?.user_type ?? 'User'
+
+    const createdRaw = u?.created_at ?? u?.created ?? u?.createdAt
+    const updatedRaw = u?.updated_at ?? u?.updated ?? u?.updatedAt
+
+    return {
+      id: u?.id ?? u?._id ?? Date.now() + idx,
+      name,
+      email: u?.email ?? '',
+      phone: u?.phone ?? u?.phoneNumber ?? u?.mobile ?? '',
+      avatar: getInitials(name),
+      color: AVATAR_COLORS[idx % AVATAR_COLORS.length],
+      role: String(roleValue),
+      active: Boolean(u?.is_active ?? u?.active),
+      created: createdRaw ? formatTimestamp(new Date(createdRaw)) : '',
+      updated: updatedRaw ? formatTimestamp(new Date(updatedRaw)) : '',
+    }
+  })
+
+  const loadMembers = async () => {
+    setLoadingMembers(true)
+    setToastError('')
+    try {
+      const data = await fetchUsersAPI()
+      const usersData = data?.users ?? data?.data?.users ?? data?.result?.users ?? []
+      setMembers(normalizeMembers(usersData))
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Failed to load users.'
+      setToastError(msg)
+    } finally {
+      setLoadingMembers(false)
+    }
+  }
+
+  useEffect(() => {
+    loadMembers()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const filteredMembers = useMemo(() => {
     const search = query.trim().toLowerCase()
@@ -473,6 +527,7 @@ export default function AllUsers({ onNavigate }) {
     setStatus('')
     setStartDate('')
     setEndDate('')
+    loadMembers()
   }
 
   const closeModal = () => {
@@ -490,10 +545,24 @@ export default function AllUsers({ onNavigate }) {
     setModalOpen(true)
   }
 
-  const toggleMember = (id) => {
-    setMembers((current) => current.map((member) => (
-      member.id === id ? { ...member, active: !member.active } : member
-    )))
+  const toggleMember = async (id) => {
+    const member = members.find((m) => m.id === id)
+    if (!member) return
+    if (statusUpdatingId) return
+
+    const newActive = !member.active
+    setStatusUpdatingId(id)
+    setToastError('')
+    try {
+      const res = await setUserStatusAPI({ id, isActive: newActive })
+      setToastSuccess(res?.message || (newActive ? 'User Activated.' : 'User Deactivated.'))
+      await loadMembers() // UI sync with backend
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Status update failed.'
+      setToastError(msg)
+    } finally {
+      setStatusUpdatingId(null)
+    }
   }
 
   const deleteMember = (id) => {
@@ -657,6 +726,9 @@ export default function AllUsers({ onNavigate }) {
           </div>
         </div>
 
+        {toastSuccess ? <div className="notif-toast mb-4">{toastSuccess}</div> : null}
+        {toastError ? <div className="vendor-form-error mb-4">{toastError}</div> : null}
+
         <div className="overflow-x-auto rounded-xl border border-white/5">
           <table className="vendors-table data-table w-full min-w-[1100px] text-left text-sm">
             <thead>
@@ -673,7 +745,11 @@ export default function AllUsers({ onNavigate }) {
               </tr>
             </thead>
             <tbody>
-              {filteredMembers.length === 0 ? (
+              {loadingMembers ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-slate-400">Loading users...</td>
+                </tr>
+              ) : filteredMembers.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="py-10 text-center text-sm text-slate-400">
                     No users found for the selected filters.
@@ -701,7 +777,12 @@ export default function AllUsers({ onNavigate }) {
                   <td>
                     <div className="flex items-center gap-2">
                       <label className="toggle-switch">
-                        <input type="checkbox" checked={member.active} onChange={() => toggleMember(member.id)} />
+                        <input
+                          type="checkbox"
+                          checked={member.active}
+                          disabled={loadingMembers || statusUpdatingId === member.id}
+                          onChange={() => toggleMember(member.id)}
+                        />
                         <span className="toggle-slider" />
                       </label>
                       <span className={`text-xs font-semibold ${member.active ? 'text-emerald-400' : 'text-slate-500'}`}>
