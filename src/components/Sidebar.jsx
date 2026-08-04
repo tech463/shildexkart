@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { NavLink } from 'react-router-dom'
 import {
   BannerIcon, BellIcon, CalendarIcon, CheckIcon, ChevronIcon, ClockIcon,
   DashboardIcon, FolderIcon, GridIcon, InventoryIcon, InvoiceIcon, LayersIcon, ListIcon,
   MailIcon, PaymentIcon, ProductsIcon, SettingsIcon, ShieldIcon, StarIcon, TagIcon,
   UnitIcon, UserIcon, UsersIcon,
 } from './Icons'
+import { pageToPath } from '../routes/paths'
 
 const mainLinkClass = 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-brand-400'
 const subLinkClass = 'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-brand-400'
@@ -13,11 +15,13 @@ const PAGE_GROUP = {
   'all-users': 'users',
   vendors: 'users',
   users: 'users',
+  'user-insights': 'users',
   'main-category': 'masters',
   category: 'masters',
   'sub-category': 'masters',
   units: 'masters',
   'product-tags': 'masters',
+  'add-product': 'products',
   'in-stock': 'inventory',
   'low-stock': 'inventory',
   'out-of-stock': 'inventory',
@@ -89,31 +93,34 @@ function StatusIcon({ type }) {
   return <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">!</span>
 }
 
-function Sidebar({ currentPage, onNavigate, collapsed = false }) {
+function Sidebar({ currentPage, collapsed = false }) {
   const [openDropdown, setOpenDropdown] = useState(PAGE_GROUP[currentPage] || null)
 
   useEffect(() => {
     const group = PAGE_GROUP[currentPage]
-    if (group) setOpenDropdown(group)
+    if (group && group !== 'products') setOpenDropdown(group)
   }, [currentPage])
 
-  const navigate = (event, pageId) => {
-    event.preventDefault()
-    onNavigate(pageId)
-  }
-
   const activeClassFor = (id) => {
-    if (currentPage !== id) return ''
+    const isActive =
+      currentPage === id
+      || (id === 'products' && currentPage === 'add-product')
+      || (id === 'all-users' && currentPage === 'user-insights')
+    if (!isActive) return ''
     if (id === 'users' || id === 'all-users') return 'nav-active-pink'
     return 'nav-active'
   }
 
   const renderPageLink = ({ id, label, icon: Icon, status }) => (
     <li key={id}>
-      <a href="#" data-page={id} className={`nav-page-link ${subLinkClass} ${activeClassFor(id)}`} onClick={(event) => navigate(event, id)}>
+      <NavLink
+        to={pageToPath(id)}
+        data-page={id}
+        className={`nav-page-link ${subLinkClass} ${activeClassFor(id)}`}
+      >
         {status ? <StatusIcon type={status} /> : <span className="sidebar-icon sidebar-icon-sub"><Icon /></span>}
         {label}
-      </a>
+      </NavLink>
     </li>
   )
 
@@ -142,9 +149,9 @@ function Sidebar({ currentPage, onNavigate, collapsed = false }) {
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
         <ul className="space-y-0.5">
           <li>
-            <a href="#" data-page="dashboard" className={`${mainLinkClass} ${activeClassFor('dashboard')}`} onClick={(event) => navigate(event, 'dashboard')}>
+            <NavLink to={pageToPath('dashboard')} data-page="dashboard" className={`${mainLinkClass} ${activeClassFor('dashboard')}`}>
               <span className="sidebar-icon sidebar-icon-main"><DashboardIcon /></span>Dashboard
-            </a>
+            </NavLink>
           </li>
 
           {dropdowns.filter((item) => ['users', 'masters'].includes(item.id)).map(renderDropdown)}
@@ -154,18 +161,18 @@ function Sidebar({ currentPage, onNavigate, collapsed = false }) {
             ['products', 'Products', ProductsIcon],
           ].map(([id, label, Icon]) => (
             <li key={id}>
-              <a href="#" data-page={id} className={`${mainLinkClass} ${activeClassFor(id)}`} onClick={(event) => navigate(event, id)}>
+              <NavLink to={pageToPath(id)} data-page={id} className={`${mainLinkClass} ${activeClassFor(id)}`}>
                 <span className="sidebar-icon sidebar-icon-main"><Icon /></span>{label}
-              </a>
+              </NavLink>
             </li>
           ))}
 
           {dropdowns.filter((item) => item.id === 'inventory').map(renderDropdown)}
 
           <li>
-            <a href="#" data-page="orders" className={`${mainLinkClass} ${activeClassFor('orders')}`} onClick={(event) => navigate(event, 'orders')}>
+            <NavLink to={pageToPath('orders')} data-page="orders" className={`${mainLinkClass} ${activeClassFor('orders')}`}>
               <span className="sidebar-icon sidebar-icon-main"><CalendarIcon /></span>Orders
-            </a>
+            </NavLink>
           </li>
 
           {dropdowns.filter((item) => item.id === 'payment').map(renderDropdown)}
@@ -177,9 +184,9 @@ function Sidebar({ currentPage, onNavigate, collapsed = false }) {
             ['notifications', 'Notifications', BellIcon],
           ].map(([id, label, Icon]) => (
             <li key={id}>
-              <a href="#" data-page={id} className={`${mainLinkClass} ${activeClassFor(id)}`} onClick={(event) => navigate(event, id)}>
+              <NavLink to={pageToPath(id)} data-page={id} className={`${mainLinkClass} ${activeClassFor(id)}`}>
                 <span className="sidebar-icon sidebar-icon-main"><Icon /></span>{label}
-              </a>
+              </NavLink>
             </li>
           ))}
 

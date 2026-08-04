@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react'
+import {
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom'
 import BackgroundEffects from './components/BackgroundEffects'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
-import { PAGE_CONFIGS } from './data/pages'
+import { useAppNavigate } from './hooks/useAppNavigate'
+import { pathToPageId } from './routes/paths'
 import AllUsers from './pages/AllUsers'
 import Account from './pages/Account'
 import Addresses from './pages/Addresses'
@@ -15,6 +24,7 @@ import Login from './pages/Login'
 import Notifications from './pages/Notifications'
 import Orders from './pages/Orders'
 import PaymentsPage from './pages/PaymentsPage'
+import AddProduct from './pages/AddProduct'
 import Products from './pages/Products'
 import Security from './pages/Security'
 import StockInventoryPage from './pages/StockInventoryPage'
@@ -37,12 +47,152 @@ function readStoredAuth() {
   }
 }
 
+function RequireAuth({ authUser, children }) {
+  const location = useLocation()
+  if (!authUser) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+  return children
+}
+
+function GuestOnly({ authUser, children }) {
+  if (authUser) {
+    return <Navigate to="/" replace />
+  }
+  return children
+}
+
+function AdminLayout({ onLogout, sidebarCollapsed, onToggleSidebar }) {
+  const location = useLocation()
+  const appNavigate = useAppNavigate()
+  const currentPage = pathToPageId(location.pathname)
+
+  return (
+    <div className="font-sans antialiased text-slate-200">
+      <BackgroundEffects />
+      <Sidebar
+        currentPage={currentPage}
+        onNavigate={appNavigate}
+        collapsed={sidebarCollapsed}
+      />
+      <Topbar
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={onToggleSidebar}
+        onNavigate={appNavigate}
+        onLogout={onLogout}
+      />
+      <div
+        id="main-wrapper"
+        className={`relative z-10 ml-64 pt-16 transition-[margin] duration-300${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}
+      >
+        <main className="min-h-[calc(100vh-4rem)] p-6">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  )
+}
+
+function withNav(Page) {
+  return function RoutedPage() {
+    const onNavigate = useAppNavigate()
+    return <Page onNavigate={onNavigate} />
+  }
+}
+
+/** Same as withNav, but stores member payload in location.state for user-insights. */
+function withInsightsNav(Page) {
+  return function RoutedPage() {
+    const onNavigate = useAppNavigate()
+    const location = useLocation()
+    const bridged = (page, member = null) => {
+      if (page === 'user-insights' && member) {
+        onNavigate('user-insights', {
+          member,
+          fromPage: pathToPageId(location.pathname),
+        })
+        return
+      }
+      onNavigate(page)
+    }
+    return <Page onNavigate={bridged} />
+  }
+}
+
+const DashboardPage = withInsightsNav(Dashboard)
+const AllUsersPage = withInsightsNav(AllUsers)
+const VendorsPage = withInsightsNav(Vendors)
+const UsersPage = withInsightsNav(Users)
+const BannersPage = withNav(Banners)
+const ProductsPage = withNav(Products)
+const AddProductPage = withNav(AddProduct)
+const OrdersPage = withNav(Orders)
+const AddressesPage = withNav(Addresses)
+const InvoicesPage = withNav(Invoices)
+const CouponsPage = withNav(Coupons)
+const NotificationsPage = withNav(Notifications)
+const AccountPage = withNav(Account)
+const WalletPage = withNav(Wallet)
+const SecurityPage = withNav(Security)
+
+function MasterPage({ pageId }) {
+  const onNavigate = useAppNavigate()
+  return <EntityListPage key={pageId} pageId={pageId} onNavigate={onNavigate} />
+}
+
+function InventoryRoute({ stockType }) {
+  const onNavigate = useAppNavigate()
+  return <StockInventoryPage key={stockType} stockType={stockType} onNavigate={onNavigate} />
+}
+
+function PaymentRoute({ paymentType }) {
+  const onNavigate = useAppNavigate()
+  return <PaymentsPage key={paymentType} paymentType={paymentType} onNavigate={onNavigate} />
+}
+
+function UserInsightsRoute() {
+  const onNavigate = useAppNavigate()
+  const location = useLocation()
+  const state = location.state
+  const member = state?.member || (state?.email ? state : null)
+  const fromPage = state?.fromPage || 'all-users'
+
+  if (!member?.email) {
+    return <Navigate to="/users/all" replace />
+  }
+
+  return (
+    <UserInsights
+      member={member}
+      onNavigate={onNavigate}
+      fromPage={fromPage}
+    />
+  )
+}
+
+function NotFoundPage() {
+  const onNavigate = useAppNavigate()
+  return (
+    <section className="page-view">
+      <div className="neo-card glass-card p-8">
+        <p className="mb-4 text-sm text-slate-400">Page not found.</p>
+        <button
+          type="button"
+          className="text-sm font-semibold text-brand-400 hover:underline"
+          onClick={() => onNavigate('dashboard')}
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    </section>
+  )
+}
+
 export default function App() {
   const [authUser, setAuthUser] = useState(() => readStoredAuth())
-  const [currentPage, setCurrentPage] = useState('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [viewMember, setViewMember] = useState(null)
-  const [insightsFrom, setInsightsFrom] = useState('all-users')
+  const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     if (!authUser) {
@@ -56,107 +206,83 @@ export default function App() {
     }
   }, [authUser])
 
-  const navigate = (page, member = null) => {
-    if (page === 'user-insights' && member) {
-      setViewMember(member)
-      setInsightsFrom(currentPage === 'dashboard' ? 'all-users' : currentPage)
-    }
-    if (page !== 'user-insights') {
-      setViewMember(null)
-    }
-    setCurrentPage(page)
-  }
-
   const handleAuthenticated = ({ email, remember, token }) => {
     setAuthUser({ email, remember: Boolean(remember), token })
-    setCurrentPage('dashboard')
     setSidebarCollapsed(false)
+    const from = location.state?.from
+    navigate(from && from !== '/login' ? from : '/', { replace: true })
   }
 
   const handleLogout = () => {
     setAuthUser(null)
-    setCurrentPage('dashboard')
-    setViewMember(null)
     setSidebarCollapsed(false)
-  }
-
-  const renderPage = () => {
-    if (currentPage === 'dashboard') return <Dashboard onNavigate={navigate} />
-    if (currentPage === 'all-users') return <AllUsers onNavigate={navigate} />
-    if (currentPage === 'vendors') return <Vendors onNavigate={navigate} />
-    if (currentPage === 'users') return <Users onNavigate={navigate} />
-    if (currentPage === 'banners') return <Banners onNavigate={navigate} />
-    if (currentPage === 'products') return <Products onNavigate={navigate} />
-    if (currentPage === 'orders') return <Orders onNavigate={navigate} />
-    if (currentPage === 'addresses') return <Addresses onNavigate={navigate} />
-    if (currentPage === 'invoices') return <Invoices onNavigate={navigate} />
-    if (currentPage === 'coupons') return <Coupons onNavigate={navigate} />
-    if (currentPage === 'notifications') return <Notifications onNavigate={navigate} />
-    if (currentPage === 'account') return <Account onNavigate={navigate} />
-    if (currentPage === 'wallet') return <Wallet onNavigate={navigate} />
-    if (currentPage === 'security') return <Security onNavigate={navigate} />
-    if (
-      currentPage === 'all-payments'
-      || currentPage === 'pending-payments'
-      || currentPage === 'completed-payments'
-      || currentPage === 'refunded-payments'
-      || currentPage === 'failed-payments'
-    ) {
-      return <PaymentsPage key={currentPage} paymentType={currentPage} onNavigate={navigate} />
-    }
-    if (currentPage === 'in-stock' || currentPage === 'low-stock' || currentPage === 'out-of-stock') {
-      return <StockInventoryPage key={currentPage} stockType={currentPage} onNavigate={navigate} />
-    }
-    if (currentPage === 'user-insights') {
-      return (
-        <UserInsights
-          member={viewMember}
-          onNavigate={navigate}
-          fromPage={insightsFrom}
-        />
-      )
-    }
-    if (PAGE_CONFIGS[currentPage]) {
-      return <EntityListPage key={currentPage} pageId={currentPage} onNavigate={navigate} />
-    }
-    return (
-      <section className="page-view">
-        <div className="neo-card glass-card p-8">
-          <p className="text-sm text-slate-400">Page not found.</p>
-        </div>
-      </section>
-    )
-  }
-
-  if (!authUser) {
-    return (
-      <div className="font-sans antialiased text-slate-200">
-        <BackgroundEffects />
-        <Login onAuthenticated={handleAuthenticated} />
-      </div>
-    )
+    navigate('/login', { replace: true })
   }
 
   return (
-    <div className="font-sans antialiased text-slate-200">
-      <BackgroundEffects />
-      <Sidebar
-        currentPage={currentPage}
-        onNavigate={navigate}
-        collapsed={sidebarCollapsed}
+    <Routes>
+      <Route
+        path="/login"
+        element={(
+          <GuestOnly authUser={authUser}>
+            <div className="font-sans antialiased text-slate-200">
+              <BackgroundEffects />
+              <Login onAuthenticated={handleAuthenticated} />
+            </div>
+          </GuestOnly>
+        )}
       />
-      <Topbar
-        sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
-        onNavigate={navigate}
-        onLogout={handleLogout}
-      />
-      <div
-        id="main-wrapper"
-        className={`relative z-10 ml-64 pt-16 transition-[margin] duration-300${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}
+
+      <Route
+        element={(
+          <RequireAuth authUser={authUser}>
+            <AdminLayout
+              onLogout={handleLogout}
+              sidebarCollapsed={sidebarCollapsed}
+              onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
+            />
+          </RequireAuth>
+        )}
       >
-        <main className="min-h-[calc(100vh-4rem)] p-6">{renderPage()}</main>
-      </div>
-    </div>
+        <Route index element={<DashboardPage />} />
+        <Route path="users/all" element={<AllUsersPage />} />
+        <Route path="users/vendors" element={<VendorsPage />} />
+        <Route path="users" element={<UsersPage />} />
+        <Route path="users/insights" element={<UserInsightsRoute />} />
+
+        <Route path="masters/main-category" element={<MasterPage pageId="main-category" />} />
+        <Route path="masters/category" element={<MasterPage pageId="category" />} />
+        <Route path="masters/sub-category" element={<MasterPage pageId="sub-category" />} />
+        <Route path="masters/units" element={<MasterPage pageId="units" />} />
+        <Route path="masters/product-tags" element={<MasterPage pageId="product-tags" />} />
+
+        <Route path="banners" element={<BannersPage />} />
+        <Route path="products" element={<ProductsPage />} />
+        <Route path="products/new" element={<AddProductPage />} />
+
+        <Route path="inventory/in-stock" element={<InventoryRoute stockType="in-stock" />} />
+        <Route path="inventory/low-stock" element={<InventoryRoute stockType="low-stock" />} />
+        <Route path="inventory/out-of-stock" element={<InventoryRoute stockType="out-of-stock" />} />
+
+        <Route path="orders" element={<OrdersPage />} />
+
+        <Route path="payments/all" element={<PaymentRoute paymentType="all-payments" />} />
+        <Route path="payments/pending" element={<PaymentRoute paymentType="pending-payments" />} />
+        <Route path="payments/completed" element={<PaymentRoute paymentType="completed-payments" />} />
+        <Route path="payments/refunded" element={<PaymentRoute paymentType="refunded-payments" />} />
+        <Route path="payments/failed" element={<PaymentRoute paymentType="failed-payments" />} />
+
+        <Route path="addresses" element={<AddressesPage />} />
+        <Route path="invoices" element={<InvoicesPage />} />
+        <Route path="coupons" element={<CouponsPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
+
+        <Route path="settings/account" element={<AccountPage />} />
+        <Route path="settings/wallet" element={<WalletPage />} />
+        <Route path="settings/security" element={<SecurityPage />} />
+
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+    </Routes>
   )
 }

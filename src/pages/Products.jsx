@@ -5,6 +5,7 @@ import {
   PRODUCTS_DATA,
   VENDOR_STATUS_OPTIONS,
 } from '../data/products'
+import { PAGE_CONFIGS } from '../data/pages'
 
 function Icon({ path, className = 'h-4 w-4' }) {
   return (
@@ -237,26 +238,44 @@ function ProductModal({ open, onClose, onSubmit, product = null }) {
                 />
               </div>
               <div className="md:col-span-2">
-                <label htmlFor={`${fieldPrefix}-category`} className="vendor-field-label">Category Path</label>
-                <input
+                <label htmlFor={`${fieldPrefix}-category`} className="vendor-field-label">Category</label>
+                <select
                   id={`${fieldPrefix}-category`}
-                  type="text"
                   value={form.categoryPath}
                   onChange={updateField('categoryPath')}
-                  placeholder="School Shoes | Men Clothing"
                   className="glass-input vendor-field-input"
-                />
+                >
+                  <option value="">- Select Category -</option>
+                  {(PAGE_CONFIGS.category?.rows || []).map((row) => (
+                    <option key={row.id} value={row.name}>
+                      {row.name}
+                    </option>
+                  ))}
+                  {form.categoryPath && !(PAGE_CONFIGS.category?.rows || []).some((row) => row.name === form.categoryPath) ? (
+                    <option value={form.categoryPath}>{form.categoryPath}</option>
+                  ) : null}
+                </select>
               </div>
               <div>
-                <label htmlFor={`${fieldPrefix}-subcategory`} className="vendor-field-label">Sub Category</label>
-                <input
+                <label htmlFor={`${fieldPrefix}-subcategory`} className="vendor-field-label">Sub-category</label>
+                <select
                   id={`${fieldPrefix}-subcategory`}
-                  type="text"
                   value={form.subCategory}
                   onChange={updateField('subCategory')}
-                  placeholder="T-Shirts"
                   className="glass-input vendor-field-input"
-                />
+                >
+                  <option value="">- Select Sub-category -</option>
+                  {(PAGE_CONFIGS['sub-category']?.rows || [])
+                    .filter((row) => !form.categoryPath || row.parent === form.categoryPath)
+                    .map((row) => (
+                      <option key={row.id} value={row.name}>
+                        {row.name}
+                      </option>
+                    ))}
+                  {form.subCategory && !(PAGE_CONFIGS['sub-category']?.rows || []).some((row) => row.name === form.subCategory) ? (
+                    <option value={form.subCategory}>{form.subCategory}</option>
+                  ) : null}
+                </select>
               </div>
               <div>
                 <label htmlFor={`${fieldPrefix}-price`} className="vendor-field-label">Price</label>
@@ -502,8 +521,7 @@ export default function Products({ onNavigate }) {
   }
 
   const openAddModal = () => {
-    setEditingProduct(null)
-    setModalOpen(true)
+    onNavigate?.('add-product')
   }
 
   const openEditModal = (product) => {
