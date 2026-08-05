@@ -4,16 +4,26 @@ import { pageToPath } from '../routes/paths'
 
 /**
  * App-level navigate that accepts legacy page ids (e.g. 'products', 'add-product')
- * and optional payload via location.state (used for user-insights).
+ * and optional payload (path params and/or location.state).
  */
 export function useAppNavigate() {
   const navigate = useNavigate()
 
   return useCallback(
-    (pageId, state = null) => {
-      const path = pageToPath(pageId)
-      if (state != null) {
-        navigate(path, { state })
+    (pageId, payload = null) => {
+      const path = pageToPath(
+        pageId,
+        payload && typeof payload === 'object' ? payload : {},
+      )
+
+      // Edit product: id is already in the URL path
+      if (pageId === 'edit-product') {
+        navigate(path)
+        return
+      }
+
+      if (payload != null) {
+        navigate(path, { state: payload })
       } else {
         navigate(path)
       }

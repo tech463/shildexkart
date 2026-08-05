@@ -22,6 +22,8 @@ const PAGE_GROUP = {
   units: 'masters',
   'product-tags': 'masters',
   'add-product': 'products',
+  'edit-product': 'products',
+  'bulk-upload-products': 'products',
   'in-stock': 'inventory',
   'low-stock': 'inventory',
   'out-of-stock': 'inventory',
@@ -104,7 +106,7 @@ function Sidebar({ currentPage, collapsed = false }) {
   const activeClassFor = (id) => {
     const isActive =
       currentPage === id
-      || (id === 'products' && currentPage === 'add-product')
+      || (id === 'products' && (currentPage === 'add-product' || currentPage === 'edit-product' || currentPage === 'bulk-upload-products'))
       || (id === 'all-users' && currentPage === 'user-insights')
     if (!isActive) return ''
     if (id === 'users' || id === 'all-users') return 'nav-active-pink'

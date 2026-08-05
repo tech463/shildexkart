@@ -25,6 +25,7 @@ import Notifications from './pages/Notifications'
 import Orders from './pages/Orders'
 import PaymentsPage from './pages/PaymentsPage'
 import AddProduct from './pages/AddProduct'
+import BulkUploadProducts from './pages/BulkUploadProducts'
 import Products from './pages/Products'
 import Security from './pages/Security'
 import StockInventoryPage from './pages/StockInventoryPage'
@@ -126,6 +127,7 @@ const UsersPage = withInsightsNav(Users)
 const BannersPage = withNav(Banners)
 const ProductsPage = withNav(Products)
 const AddProductPage = withNav(AddProduct)
+const BulkUploadProductsPage = withNav(BulkUploadProducts)
 const OrdersPage = withNav(Orders)
 const AddressesPage = withNav(Addresses)
 const InvoicesPage = withNav(Invoices)
@@ -259,6 +261,8 @@ export default function App() {
         <Route path="banners" element={<BannersPage />} />
         <Route path="products" element={<ProductsPage />} />
         <Route path="products/new" element={<AddProductPage />} />
+        <Route path="products/edit/:id" element={<AddProductPage />} />
+        <Route path="products/bulk" element={<BulkUploadProductsPage />} />
 
         <Route path="inventory/in-stock" element={<InventoryRoute stockType="in-stock" />} />
         <Route path="inventory/low-stock" element={<InventoryRoute stockType="low-stock" />} />

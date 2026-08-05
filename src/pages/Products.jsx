@@ -1,11 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
+import ProductExcelUploadModal from '../components/ProductExcelUploadModal'
 import {
   APPROVAL_STATUS_OPTIONS,
-  PRODUCTS_DATA,
   VENDOR_STATUS_OPTIONS,
 } from '../data/products'
 import { PAGE_CONFIGS } from '../data/pages'
+import {
+  deleteProductAPI,
+  fetchProductByIdAPI,
+  fetchProductsAPI,
+  setProductApprovalAPI,
+  setProductStatusAPI,
+} from '../services/productService'
 
 function Icon({ path, className = 'h-4 w-4' }) {
   return (
@@ -60,6 +67,47 @@ function formatTimestamp(date = new Date()) {
 function formatRupee(value) {
   const amount = Number(value) || 0
   return `₹${amount.toLocaleString('en-IN')}`
+}
+
+function capitalizeStatus(value) {
+  if (!value) return ''
+  const text = String(value)
+  return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase()
+}
+
+function formatApiDate(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : formatTimestamp(date)
+}
+
+function mapApiProduct(row) {
+  if (!row) return null
+  const isActive = Boolean(row.is_active)
+  const sizes = Array.isArray(row.sizes) ? row.sizes : []
+  return {
+    id: row.id,
+    name: row.title || row.name || '',
+    brand: row.brand || '',
+    categoryPath: row.category_path || '',
+    subCategory: row.sub_category_name || '',
+    price: Number(row.effective_price ?? row.discounted_price ?? 0),
+    mrp: Number(row.price ?? row.mrp ?? 0),
+    stock: Number(row.stock_qty ?? 0),
+    imageUrl: row.cover_image || '',
+    adminActive: isActive,
+    active: isActive,
+    vendorStatus: row.vendor?.name || row.vendor?.shop_name || row.created_by_type || '',
+    approvalStatus: capitalizeStatus(row.approval_status),
+    status: row.status || '',
+    variants: sizes.length > 0 ? sizes.length : (Number(row.variants) || 1),
+    created: formatApiDate(row.created_at),
+    updated: formatApiDate(row.updated_at),
+  }
+}
+
+function apiErrorMessage(err, fallback) {
+  return err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback
 }
 
 function parseProductDate(value) {
@@ -405,7 +453,49 @@ function ProductModal({ open, onClose, onSubmit, product = null }) {
   )
 }
 
-function ProductViewModal({ open, onClose, product }) {
+function ViewField({ label, children, full = false }) {
+  if (children == null || children === '') return null
+  return (
+    <div className={full ? 'sm:col-span-2' : undefined}>
+      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="mt-0.5 text-sm text-slate-300 whitespace-pre-wrap break-words">{children}</div>
+    </div>
+  )
+}
+
+function ViewChipList({ label, items }) {
+  if (!Array.isArray(items) || items.length === 0) return null
+  return (
+    <div className="sm:col-span-2">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {items.map((item) => (
+          <span
+            key={String(item)}
+            className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-slate-300"
+          >
+            {String(item)}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ViewSection({ title, children }) {
+  return (
+    <div className="space-y-3 border-t border-white/10 pt-4 first:border-t-0 first:pt-0">
+      <h4 className="text-xs font-bold uppercase tracking-wider text-brand-300">{title}</h4>
+      <div className="grid gap-3 sm:grid-cols-2">{children}</div>
+    </div>
+  )
+}
+
+function ProductViewModal({ open, onClose, productId }) {
+  const [detail, setDetail] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
   useEffect(() => {
     if (!open) return undefined
     const previousOverflow = document.body.style.overflow
@@ -420,12 +510,56 @@ function ProductViewModal({ open, onClose, product }) {
     }
   }, [open, onClose])
 
-  if (!open || !product) return null
+  useEffect(() => {
+    if (!open || !productId) {
+      setDetail(null)
+      setError('')
+      return undefined
+    }
+
+    let cancelled = false
+    const load = async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const response = await fetchProductByIdAPI(productId)
+        if (cancelled) return
+        if (!response?.success || !response?.data) {
+          throw new Error(response?.message || 'Product not found.')
+        }
+        setDetail(response.data)
+      } catch (err) {
+        if (!cancelled) {
+          setDetail(null)
+          setError(apiErrorMessage(err, 'Failed to load product details.'))
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [open, productId])
+
+  if (!open) return null
+
+  const salePrice = Number(detail?.discounted_price ?? 0)
+  const mrp = Number(detail?.price ?? 0)
+  const effective = salePrice > 0 ? salePrice : mrp
+  const gallery = Array.isArray(detail?.gallery) ? detail.gallery.filter(Boolean) : []
+  const sizes = Array.isArray(detail?.sizes) ? detail.sizes : []
+  const colors = Array.isArray(detail?.colors) ? detail.colors : []
+  const tags = Array.isArray(detail?.tags) ? detail.tags : []
+  const vendorName =
+    detail?.vendor?.shop_name || detail?.vendor?.name || detail?.created_by_type || ''
 
   return (
     <div className="vendor-modal-overlay" onClick={onClose} role="presentation">
       <div
-        className="vendor-modal vendor-modal-category glass-card"
+        className="vendor-modal vendor-modal-wide glass-card"
         role="dialog"
         aria-modal="true"
         aria-labelledby="view-product-title"
@@ -440,43 +574,108 @@ function ProductViewModal({ open, onClose, product }) {
             <Icon path={paths.close} />
           </button>
         </div>
+
         <div className="vendor-modal-body space-y-4">
-          <div className="product-view-image">
-            {product.imageUrl ? (
-              <img src={product.imageUrl} alt={product.name} />
-            ) : (
-              <span className="text-sm text-slate-500">No image</span>
-            )}
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Name</p>
-              <p className="text-sm font-semibold text-slate-200">{product.name}</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Brand</p>
-              <p className="text-sm text-slate-300">{product.brand}</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Category</p>
-              <p className="text-sm text-slate-300">{product.categoryPath}</p>
-              {product.subCategory ? <p className="text-xs text-slate-500">{product.subCategory}</p> : null}
-            </div>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Price</p>
-              <p className="text-sm font-semibold text-slate-200">{formatRupee(product.price)}</p>
-              <p className="text-xs text-slate-500 line-through">{formatRupee(product.mrp)}</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Stock</p>
-              <p className="text-sm text-slate-300">{product.stock}</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Variants</p>
-              <p className="text-sm text-brand-300">{product.variants}</p>
-            </div>
-          </div>
+          {loading ? (
+            <p className="py-8 text-center text-sm text-slate-400">Loading product details…</p>
+          ) : null}
+
+          {!loading && error ? (
+            <p className="py-8 text-center text-sm text-rose-400">{error}</p>
+          ) : null}
+
+          {!loading && !error && detail ? (
+            <>
+              <div className="product-view-image">
+                {detail.cover_image ? (
+                  <img src={detail.cover_image} alt={detail.title || detail.name || 'Product'} />
+                ) : (
+                  <span className="text-sm text-slate-500">No cover image</span>
+                )}
+              </div>
+
+              {gallery.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {gallery.map((url) => (
+                    <div
+                      key={url}
+                      className="h-16 w-16 overflow-hidden rounded-lg border border-white/10 bg-white/5"
+                    >
+                      <img src={url} alt="" className="h-full w-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <ViewSection title="Basic info">
+                <ViewField label="Name">{detail.title || detail.name}</ViewField>
+                <ViewField label="SKU">{detail.sku || '—'}</ViewField>
+                <ViewField label="Brand">{detail.brand || '—'}</ViewField>
+                <ViewField label="Product type">{capitalizeStatus(detail.product_type) || '—'}</ViewField>
+                <ViewField label="Main category" full>
+                  {detail.main_category_name || '—'}
+                </ViewField>
+                <ViewField label="Category">{detail.category_name || '—'}</ViewField>
+                <ViewField label="Sub-category">{detail.sub_category_name || '—'}</ViewField>
+                {detail.category_path ? (
+                  <ViewField label="Category path" full>{detail.category_path}</ViewField>
+                ) : null}
+              </ViewSection>
+
+              <ViewSection title="Pricing & stock">
+                <ViewField label="Selling price">{formatRupee(effective)}</ViewField>
+                <ViewField label="MRP">{formatRupee(mrp)}</ViewField>
+                <ViewField label="Stock qty">{detail.stock_qty ?? 0}</ViewField>
+                <ViewField label="Stock status">{detail.stock_status || '—'}</ViewField>
+                <ViewField label="Manage stock">{detail.manage_stock ? 'Yes' : 'No'}</ViewField>
+                <ViewField label="Allow backorder">{detail.allow_backorder ? 'Yes' : 'No'}</ViewField>
+                <ViewField label="Visibility">{detail.visibility || '—'}</ViewField>
+                <ViewField label="Enable reviews">{detail.enable_reviews !== false ? 'Yes' : 'No'}</ViewField>
+                <ViewChipList label="Sizes" items={sizes} />
+                <ViewChipList label="Colors" items={colors} />
+                <ViewChipList label="Tags" items={tags} />
+              </ViewSection>
+
+              <ViewSection title="Status">
+                <ViewField label="Publish status">{capitalizeStatus(detail.status) || '—'}</ViewField>
+                <ViewField label="Approval">{capitalizeStatus(detail.approval_status) || '—'}</ViewField>
+                <ViewField label="Active">{detail.is_active ? 'Active' : 'Inactive'}</ViewField>
+                <ViewField label="Vendor / creator">{vendorName || '—'}</ViewField>
+                {detail.rejection_reason ? (
+                  <ViewField label="Rejection reason" full>{detail.rejection_reason}</ViewField>
+                ) : null}
+                <ViewField label="Created">{formatApiDate(detail.created_at) || '—'}</ViewField>
+                <ViewField label="Updated">{formatApiDate(detail.updated_at) || '—'}</ViewField>
+                {detail.published_at ? (
+                  <ViewField label="Published">{formatApiDate(detail.published_at)}</ViewField>
+                ) : null}
+              </ViewSection>
+
+              <ViewSection title="Description">
+                <ViewField label="Short description" full>
+                  {detail.short_description || '—'}
+                </ViewField>
+                <ViewField label="Full description" full>
+                  {detail.description || '—'}
+                </ViewField>
+                {detail.purchase_note ? (
+                  <ViewField label="Purchase note" full>{detail.purchase_note}</ViewField>
+                ) : null}
+              </ViewSection>
+
+              <ViewSection title="SEO">
+                <ViewField label="Meta title" full>{detail.meta_title || '—'}</ViewField>
+                <ViewField label="Meta description" full>{detail.meta_description || '—'}</ViewField>
+                <ViewField label="Meta keywords" full>{detail.meta_keywords || '—'}</ViewField>
+                <ViewField label="OG title" full>{detail.og_title || '—'}</ViewField>
+                <ViewField label="OG description" full>{detail.og_description || '—'}</ViewField>
+                <ViewField label="Canonical URL" full>{detail.canonical_url || '—'}</ViewField>
+                <ViewField label="Slug" full>{detail.slug || '—'}</ViewField>
+              </ViewSection>
+            </>
+          ) : null}
         </div>
+
         <div className="vendor-modal-footer">
           <button type="button" onClick={onClose} className="vendor-btn-cancel w-full">Close</button>
         </div>
@@ -486,16 +685,59 @@ function ProductViewModal({ open, onClose, product }) {
 }
 
 export default function Products({ onNavigate }) {
-  const [products, setProducts] = useState(() => PRODUCTS_DATA.map((product) => ({ ...product })))
+  const [products, setProducts] = useState([])
   const [query, setQuery] = useState('')
   const [vendorStatus, setVendorStatus] = useState('')
   const [approvalStatus, setApprovalStatus] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const [excelModalOpen, setExcelModalOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [viewingProduct, setViewingProduct] = useState(null)
   const [deletingProduct, setDeletingProduct] = useState(null)
+  const [loadingProducts, setLoadingProducts] = useState(false)
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+  const [approvalUpdatingId, setApprovalUpdatingId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+  const [toastSuccess, setToastSuccess] = useState('')
+  const [toastError, setToastError] = useState('')
+
+  useEffect(() => {
+    if (!toastSuccess && !toastError) return undefined
+    const t = setTimeout(() => {
+      setToastSuccess('')
+      setToastError('')
+    }, 3000)
+    return () => clearTimeout(t)
+  }, [toastSuccess, toastError])
+
+  const loadProducts = useCallback(async (overrides = {}) => {
+    const searchValue = overrides.query !== undefined ? overrides.query : query
+    const approvalValue = overrides.approvalStatus !== undefined ? overrides.approvalStatus : approvalStatus
+
+    setLoadingProducts(true)
+    setToastError('')
+    try {
+      const params = { page: 1, limit: 100 }
+      const search = String(searchValue || '').trim()
+      if (search) params.search = search
+      if (approvalValue) params.approval_status = String(approvalValue).toLowerCase()
+
+      const res = await fetchProductsAPI(params)
+      const rows = Array.isArray(res?.data) ? res.data : []
+      setProducts(rows.map(mapApiProduct).filter(Boolean))
+    } catch (err) {
+      setProducts([])
+      setToastError(apiErrorMessage(err, 'Failed to load products.'))
+    } finally {
+      setLoadingProducts(false)
+    }
+  }, [query, approvalStatus])
+
+  useEffect(() => {
+    loadProducts()
+  }, [approvalStatus]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredProducts = useMemo(() => {
     const search = query.trim().toLowerCase()
@@ -513,6 +755,7 @@ export default function Products({ onNavigate }) {
     setApprovalStatus('')
     setStartDate('')
     setEndDate('')
+    loadProducts({ query: '', approvalStatus: '' })
   }
 
   const closeModal = () => {
@@ -525,25 +768,87 @@ export default function Products({ onNavigate }) {
   }
 
   const openEditModal = (product) => {
-    setEditingProduct(product)
-    setModalOpen(true)
+    onNavigate?.('edit-product', { id: product.id })
   }
 
-  const toggleAdminStatus = (id) => {
-    setProducts((current) => current.map((product) => (
-      product.id === id ? { ...product, adminActive: !product.adminActive } : product
-    )))
+  const upsertProductRow = (row) => {
+    const mapped = mapApiProduct(row)
+    if (!mapped) return
+    setProducts((current) => {
+      const exists = current.some((product) => product.id === mapped.id)
+      if (!exists) return [mapped, ...current]
+      return current.map((product) => (product.id === mapped.id ? mapped : product))
+    })
+  }
+
+  const toggleAdminStatus = async (id) => {
+    const product = products.find((item) => item.id === id)
+    if (!product || statusUpdatingId) return
+
+    const nextActive = !product.adminActive
+    setStatusUpdatingId(id)
+    setToastError('')
+    try {
+      const res = await setProductStatusAPI(id, nextActive)
+      if (res?.data) {
+        upsertProductRow(res.data)
+      } else {
+        setProducts((current) => current.map((item) => (
+          item.id === id ? { ...item, adminActive: nextActive, active: nextActive } : item
+        )))
+      }
+      setToastSuccess(res?.message || (nextActive ? 'Product activated.' : 'Product deactivated.'))
+    } catch (err) {
+      setToastError(apiErrorMessage(err, 'Status update failed.'))
+    } finally {
+      setStatusUpdatingId(null)
+    }
   }
 
   const toggleStatus = (id) => {
-    setProducts((current) => current.map((product) => (
-      product.id === id ? { ...product, active: !product.active } : product
-    )))
+    toggleAdminStatus(id)
   }
 
-  const deleteProduct = (id) => {
-    setProducts((current) => current.filter((product) => product.id !== id))
-    setDeletingProduct(null)
+  const changeApproval = async (id, nextApproval) => {
+    const product = products.find((item) => item.id === id)
+    if (!product || approvalUpdatingId) return
+
+    const approvalValue = String(nextApproval || '').toLowerCase()
+    if (!approvalValue || capitalizeStatus(approvalValue) === product.approvalStatus) return
+
+    setApprovalUpdatingId(id)
+    setToastError('')
+    try {
+      const res = await setProductApprovalAPI(id, approvalValue)
+      if (res?.data) {
+        upsertProductRow(res.data)
+      } else {
+        setProducts((current) => current.map((item) => (
+          item.id === id ? { ...item, approvalStatus: capitalizeStatus(approvalValue) } : item
+        )))
+      }
+      setToastSuccess(res?.message || `Product marked as ${approvalValue}.`)
+    } catch (err) {
+      setToastError(apiErrorMessage(err, 'Approval update failed.'))
+    } finally {
+      setApprovalUpdatingId(null)
+    }
+  }
+
+  const deleteProduct = async (id) => {
+    if (!id || deletingId) return
+    setDeletingId(id)
+    setToastError('')
+    try {
+      const res = await deleteProductAPI(id)
+      setProducts((current) => current.filter((product) => product.id !== id))
+      setDeletingProduct(null)
+      setToastSuccess(res?.message || 'Product deleted.')
+    } catch (err) {
+      setToastError(apiErrorMessage(err, 'Failed to delete product.'))
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const addProduct = (payload) => {
@@ -697,8 +1002,18 @@ export default function Products({ onNavigate }) {
               onClick={refresh}
               className="btn-glass flex h-10 w-10 items-center justify-center rounded-xl"
               aria-label="Refresh"
+              disabled={loadingProducts}
             >
               <Icon path={paths.refresh} />
+            </button>
+            <button
+              type="button"
+              className="btn-glass flex h-10 items-center gap-2 rounded-xl px-3 text-xs font-semibold"
+              aria-label="Upload Excel"
+              onClick={() => setExcelModalOpen(true)}
+            >
+              <Icon path={paths.upload} className="h-4 w-4" />
+              <span className="hidden sm:inline">Upload Excel</span>
             </button>
             <button
               type="button"
@@ -710,6 +1025,9 @@ export default function Products({ onNavigate }) {
             </button>
           </div>
         </div>
+
+        {toastSuccess ? <div className="notif-toast mb-4">{toastSuccess}</div> : null}
+        {toastError ? <div className="vendor-form-error mb-4">{toastError}</div> : null}
 
         <div className="overflow-x-auto rounded-xl border border-white/5">
           <table className="vendors-table data-table w-full min-w-[1400px] text-left text-sm">
@@ -731,10 +1049,16 @@ export default function Products({ onNavigate }) {
               </tr>
             </thead>
             <tbody>
-              {filteredProducts.length === 0 ? (
+              {loadingProducts ? (
                 <tr>
                   <td colSpan={13} className="py-10 text-center text-sm text-slate-400">
-                    No products found for the selected filters.
+                    Loading products...
+                  </td>
+                </tr>
+              ) : filteredProducts.length === 0 ? (
+                <tr>
+                  <td colSpan={13} className="py-10 text-center text-sm text-slate-400">
+                    {toastError ? 'Could not load products.' : 'No products found for the selected filters.'}
                   </td>
                 </tr>
               ) : filteredProducts.map((product, index) => (
@@ -778,6 +1102,7 @@ export default function Products({ onNavigate }) {
                         <input
                           type="checkbox"
                           checked={product.adminActive}
+                          disabled={loadingProducts || statusUpdatingId === product.id}
                           onChange={() => toggleAdminStatus(product.id)}
                         />
                         <span className="toggle-slider" />
@@ -793,6 +1118,7 @@ export default function Products({ onNavigate }) {
                         <input
                           type="checkbox"
                           checked={product.active}
+                          disabled={loadingProducts || statusUpdatingId === product.id}
                           onChange={() => toggleStatus(product.id)}
                         />
                         <span className="toggle-slider" />
@@ -809,34 +1135,48 @@ export default function Products({ onNavigate }) {
                     </div>
                   </td>
                   <td>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        className="action-btn"
-                        aria-label={`View ${product.name}`}
-                        onClick={() => setViewingProduct(product)}
+                    <div className="flex flex-col items-stretch gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          className="action-btn"
+                          aria-label={`View ${product.name}`}
+                          onClick={() => setViewingProduct(product)}
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d={paths.view} />
+                            <path strokeLinecap="round" strokeLinejoin="round" d={paths.viewEye} />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          className="action-btn"
+                          aria-label={`Edit ${product.name}`}
+                          onClick={() => openEditModal(product)}
+                        >
+                          <Icon path={paths.edit} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeletingProduct(product)}
+                          className="action-btn action-btn-danger"
+                          aria-label={`Delete ${product.name}`}
+                          disabled={deletingId === product.id}
+                        >
+                          <Icon path={paths.delete} />
+                        </button>
+                      </div>
+                      <select
+                        value={product.approvalStatus || 'Pending'}
+                        onChange={(event) => changeApproval(product.id, event.target.value)}
+                        disabled={approvalUpdatingId === product.id || loadingProducts}
+                        className="glass-input rounded-lg px-2 py-1 text-xs"
+                        aria-label={`Approval status for ${product.name}`}
                       >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                          <path strokeLinecap="round" strokeLinejoin="round" d={paths.view} />
-                          <path strokeLinecap="round" strokeLinejoin="round" d={paths.viewEye} />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        className="action-btn"
-                        aria-label={`Edit ${product.name}`}
-                        onClick={() => openEditModal(product)}
-                      >
-                        <Icon path={paths.edit} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeletingProduct(product)}
-                        className="action-btn action-btn-danger"
-                        aria-label={`Delete ${product.name}`}
-                      >
-                        <Icon path={paths.delete} />
-                      </button>
+                        {APPROVAL_STATUS_OPTIONS.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
                     </div>
                   </td>
                 </tr>
@@ -852,10 +1192,22 @@ export default function Products({ onNavigate }) {
         onSubmit={handleModalSubmit}
         product={editingProduct}
       />
+      <ProductExcelUploadModal
+        open={excelModalOpen}
+        onClose={() => setExcelModalOpen(false)}
+        onSuccess={() => {
+          loadProducts()
+          setToastSuccess('Excel products uploaded successfully.')
+        }}
+        onOpenFullPage={() => {
+          setExcelModalOpen(false)
+          onNavigate?.('bulk-upload-products')
+        }}
+      />
       <ProductViewModal
         open={Boolean(viewingProduct)}
         onClose={() => setViewingProduct(null)}
-        product={viewingProduct}
+        productId={viewingProduct?.id}
       />
       <DeleteConfirmModal
         open={Boolean(deletingProduct)}

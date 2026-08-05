@@ -13,6 +13,8 @@ export const PAGE_PATHS = {
   banners: '/banners',
   products: '/products',
   'add-product': '/products/new',
+  'edit-product': '/products/edit',
+  'bulk-upload-products': '/products/bulk',
   'in-stock': '/inventory/in-stock',
   'low-stock': '/inventory/low-stock',
   'out-of-stock': '/inventory/out-of-stock',
@@ -36,7 +38,10 @@ const PATH_TO_PAGE = Object.fromEntries(
   Object.entries(PAGE_PATHS).map(([pageId, path]) => [path, pageId]),
 )
 
-export function pageToPath(pageId) {
+export function pageToPath(pageId, params = {}) {
+  if (pageId === 'edit-product' && params.id != null) {
+    return `/products/edit/${params.id}`
+  }
   return PAGE_PATHS[pageId] || PAGE_PATHS.dashboard
 }
 

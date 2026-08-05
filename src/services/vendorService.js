@@ -1,23 +1,30 @@
 import api from '../api/axios'
 
-// Postman SS (approx):
-// GET  /api/v1/admin/vendors
-// PATCH /api/v1/admin/vendors/:id/status  body: { status: "approved" | "inactive" }
+export const VENDOR_APPROVAL_STATUSES = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'suspended', label: 'Suspended' },
+]
 
-export const fetchVendorsAPI = async () => {
-  const response = await api.get('/v1/admin/vendors')
+export const fetchVendorsAPI = async (params = {}) => {
+  const response = await api.get('/v1/admin/vendors', { params })
   return response.data
 }
 
+/** Set vendor approval status: pending | approved | rejected | suspended */
+export const setVendorApprovalStatusAPI = async (id, status) => {
+  const response = await api.patch(`/v1/admin/vendors/${id}/status`, { status })
+  return response.data
+}
+
+/**
+ * Legacy helper used by Active/Inactive toggle.
+ * Active  → approved
+ * Inactive → suspended (so rejected stays a true rejection)
+ */
 export const setVendorStatusAPI = async ({ id, isActive }) => {
-  const status = isActive ? 'approved' : 'rejected'
-  console.log('[vendorService] setVendorStatusAPI payload:', { id, isActive, status })
-  const response = await api.patch(`/v1/admin/vendors/${id}/status`, {
-    // Backend screenshot shows "approved" for Active.
-    // Backend allowed values: pending, approved, rejected, suspended.
-    // Inactive ke liye "rejected" send karein taaki is_active false set ho.
-    status,
-  })
+  const status = isActive ? 'approved' : 'suspended'
+  const response = await api.patch(`/v1/admin/vendors/${id}/status`, { status })
   return response.data
 }
-

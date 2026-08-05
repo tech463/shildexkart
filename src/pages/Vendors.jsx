@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
-import { fetchVendorsAPI, setVendorStatusAPI } from '../services/vendorService'
+import {
+  fetchVendorsAPI,
+  setVendorApprovalStatusAPI,
+  setVendorStatusAPI,
+  VENDOR_APPROVAL_STATUSES,
+} from '../services/vendorService'
 
 function Icon({ path, paths: pathList, className = 'h-4 w-4' }) {
   const segments = pathList || (path ? path.split(' M').map((segment, index) => (index === 0 ? segment : `M${segment}`)) : [])
@@ -27,6 +32,13 @@ const paths = {
   eyeOff: 'M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88',
 }
 
+const APPROVAL_BADGE = {
+  pending: 'border-amber-500/30 bg-amber-500/15 text-amber-300',
+  approved: 'border-emerald-500/30 bg-emerald-500/15 text-emerald-300',
+  rejected: 'border-rose-500/30 bg-rose-500/15 text-rose-300',
+  suspended: 'border-slate-500/30 bg-slate-500/15 text-slate-300',
+}
+
 const AVATAR_COLORS = [
   'bg-red-500/20 text-red-400 border-red-500/30',
   'bg-brand-500/20 text-brand-400 border-brand-500/30',
@@ -35,6 +47,13 @@ const AVATAR_COLORS = [
   'bg-pink-500/20 text-pink-400 border-pink-500/30',
   'bg-amber-500/20 text-amber-400 border-amber-500/30',
 ]
+
+function capitalizeStatus(value) {
+  if (!value) return ''
+  const text = String(value)
+  return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase()
+}
+
 
 const emptyForm = {
   firstName: '',
@@ -470,13 +489,14 @@ export default function Vendors({ onNavigate }) {
 
     const createdRaw = v?.created_at ?? v?.created ?? v?.createdAt
     const updatedRaw = v?.updated_at ?? v?.updated ?? v?.updatedAt
+    const approvalStatus = String(v?.status || 'pending').toLowerCase()
 
     return {
       id: v?.id ?? v?._id ?? Date.now() + idx,
       name,
       email: v?.email ?? '',
       phone: v?.phone ?? v?.phoneNumber ?? '',
-      // UI mock me only needs these fields for filters + table render
+      approvalStatus,
       active: Boolean(v?.is_active ?? v?.active),
       created: createdRaw ? formatTimestamp(new Date(createdRaw)) : '',
       updated: updatedRaw ? formatTimestamp(new Date(updatedRaw)) : '',
@@ -509,7 +529,7 @@ export default function Vendors({ onNavigate }) {
     const search = query.trim().toLowerCase()
     return vendors.filter((vendor) => (
       (!search || vendor.name.toLowerCase().includes(search) || vendor.email.toLowerCase().includes(search))
-      && (!status || (status === 'Active') === vendor.active)
+      && (!status || vendor.approvalStatus === status)
       && isWithinDateRange(vendor, startDate, endDate)
     ))
   }, [vendors, query, status, startDate, endDate])
@@ -537,6 +557,25 @@ export default function Vendors({ onNavigate }) {
     setModalOpen(true)
   }
 
+  const changeApprovalStatus = async (id, nextStatus) => {
+    const vendor = vendors.find((item) => item.id === id)
+    if (!vendor || statusUpdatingId) return
+    if (vendor.approvalStatus === nextStatus) return
+
+    setStatusUpdatingId(id)
+    setToastError('')
+    try {
+      const res = await setVendorApprovalStatusAPI(id, nextStatus)
+      setToastSuccess(res?.message || `Vendor marked as ${nextStatus}.`)
+      await loadVendors()
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Approval update failed.'
+      setToastError(msg)
+    } finally {
+      setStatusUpdatingId(null)
+    }
+  }
+
   const toggleVendor = async (id) => {
     const vendor = vendors.find((v) => v.id === id)
     if (!vendor) return
@@ -547,8 +586,7 @@ export default function Vendors({ onNavigate }) {
     setToastError('')
     try {
       const res = await setVendorStatusAPI({ id, isActive: newActive })
-      setToastSuccess(res?.message || (newActive ? 'Vendor activated successfully.' : 'Vendor deactivated successfully.'))
-      // Backend ke response ke according UI ko sync rakhne ke liye always refetch karte hain.
+      setToastSuccess(res?.message || (newActive ? 'Vendor activated successfully.' : 'Vendor suspended successfully.'))
       await loadVendors()
     } catch (err) {
       const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Status update failed.'
@@ -667,9 +705,10 @@ export default function Vendors({ onNavigate }) {
               onChange={(event) => setStatus(event.target.value)}
               className="glass-input rounded-xl px-3 py-2 text-sm"
             >
-              <option value="">Status</option>
-              <option>Active</option>
-              <option>Inactive</option>
+              <option value="">Approval status</option>
+              {VENDOR_APPROVAL_STATUSES.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
@@ -732,7 +771,8 @@ export default function Vendors({ onNavigate }) {
                 <th>Email</th>
                 <th>Phone</th>
                 <th>Role</th>
-                <th>Status</th>
+                <th>Approval</th>
+                <th>Active</th>
                 <th>Timestamp</th>
                 <th>Actions</th>
               </tr>
@@ -740,7 +780,7 @@ export default function Vendors({ onNavigate }) {
             <tbody>
               {loadingVendors ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400">Loading vendors...</td>
+                  <td colSpan={10} className="py-8 text-center text-slate-400">Loading vendors...</td>
                 </tr>
               ) : (
                 filteredVendors.map((vendor, index) => (
@@ -761,6 +801,44 @@ export default function Vendors({ onNavigate }) {
                     <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-medium text-silver-300">
                       Vendor
                     </span>
+                  </td>
+                  <td>
+                    <div className="flex min-w-[160px] flex-col gap-2">
+                      <span className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-[11px] font-semibold ${APPROVAL_BADGE[vendor.approvalStatus] || APPROVAL_BADGE.pending}`}>
+                        {capitalizeStatus(vendor.approvalStatus) || 'Pending'}
+                      </span>
+                      <select
+                        value={vendor.approvalStatus || 'pending'}
+                        disabled={loadingVendors || statusUpdatingId === vendor.id}
+                        onChange={(event) => changeApprovalStatus(vendor.id, event.target.value)}
+                        className="glass-input rounded-lg px-2 py-1 text-xs"
+                        aria-label={`Approval status for ${vendor.name}`}
+                      >
+                        {VENDOR_APPROVAL_STATUSES.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                      {vendor.approvalStatus === 'pending' ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            disabled={statusUpdatingId === vendor.id}
+                            onClick={() => changeApprovalStatus(vendor.id, 'approved')}
+                            className="rounded-lg bg-emerald-500/20 px-2 py-1 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-50"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            disabled={statusUpdatingId === vendor.id}
+                            onClick={() => changeApprovalStatus(vendor.id, 'rejected')}
+                            className="rounded-lg bg-rose-500/20 px-2 py-1 text-[11px] font-semibold text-rose-300 transition hover:bg-rose-500/30 disabled:opacity-50"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                   </td>
                   <td>
                     <div className="flex items-center gap-2">
