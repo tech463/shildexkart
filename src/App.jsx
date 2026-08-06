@@ -18,6 +18,7 @@ import Addresses from './pages/Addresses'
 import Banners from './pages/Banners'
 import Coupons from './pages/Coupons'
 import Dashboard from './pages/Dashboard'
+import CMS from './pages/CMS'
 import EntityListPage from './pages/EntityListPage'
 import Invoices from './pages/Invoices'
 import Login from './pages/Login'
@@ -125,6 +126,7 @@ const AllUsersPage = withInsightsNav(AllUsers)
 const VendorsPage = withInsightsNav(Vendors)
 const UsersPage = withInsightsNav(Users)
 const BannersPage = withNav(Banners)
+const CMSPage = withNav(CMS)
 const ProductsPage = withNav(Products)
 const AddProductPage = withNav(AddProduct)
 const BulkUploadProductsPage = withNav(BulkUploadProducts)
@@ -259,6 +261,7 @@ export default function App() {
         <Route path="masters/product-tags" element={<MasterPage pageId="product-tags" />} />
 
         <Route path="banners" element={<BannersPage />} />
+        <Route path="cms" element={<CMSPage />} />
         <Route path="products" element={<ProductsPage />} />
         <Route path="products/new" element={<AddProductPage />} />
         <Route path="products/edit/:id" element={<AddProductPage />} />

@@ -160,6 +160,7 @@ function Sidebar({ currentPage, collapsed = false }) {
 
           {[
             ['banners', 'Banners', BannerIcon],
+            ['cms', 'CMS', ListIcon],
             ['products', 'Products', ProductsIcon],
           ].map(([id, label, Icon]) => (
             <li key={id}>

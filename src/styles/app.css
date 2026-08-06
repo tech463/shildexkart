@@ -646,6 +646,10 @@
       max-height: min(92vh, 58rem);
       overflow: hidden;
     }
+    /* CMS modal me full form height ke liye scroll allow karna hai. */
+    .vendor-modal-scroll {
+      overflow: auto !important;
+    }
     .vendor-modal-wide {
       max-width: 58rem;
     }

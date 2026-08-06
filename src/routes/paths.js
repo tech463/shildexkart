@@ -11,6 +11,7 @@ export const PAGE_PATHS = {
   units: '/masters/units',
   'product-tags': '/masters/product-tags',
   banners: '/banners',
+  cms: '/cms',
   products: '/products',
   'add-product': '/products/new',
   'edit-product': '/products/edit',
