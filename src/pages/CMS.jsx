@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
+import CmsRichEditor from '../components/CmsRichEditor'
 import {
   createCMSAPI,
   deleteCMSAPI,
@@ -7,6 +8,22 @@ import {
   setCMSStatusAPI,
   updateCMSAPI,
 } from '../services/cmsService'
+import {
+  createEmptyFaqItem,
+  isFaqSlug,
+  parseFaqPayload,
+  serializeFaqPayload,
+} from '../utils/faqCms'
+
+const CMS_PAGE_PRESETS = [
+  { slug: 'about-us', title: 'About Us', subtitle: 'Who we are' },
+  { slug: 'contact', title: 'Contact Us', subtitle: 'We’re here to help' },
+  { slug: 'faq', title: 'FAQ', subtitle: 'Frequently asked questions' },
+  { slug: 'privacy', title: 'Privacy Policy', subtitle: 'How we handle your data' },
+  { slug: 'terms', title: 'Terms & Policy', subtitle: 'Terms of use' },
+  { slug: 'return', title: 'Return Policy', subtitle: 'Returns & exchanges' },
+  { slug: 'cancellation', title: 'Cancellation Policy', subtitle: 'Order cancellations' },
+]
 
 function Icon({ path, paths: pathList, className = 'h-4 w-4' }) {
   const segments = pathList || (path ? path.split(' M').map((segment, index) => (index === 0 ? segment : `M${segment}`)) : [])
@@ -38,7 +55,7 @@ function FieldLabel({ htmlFor, children }) {
   )
 }
 
-function TextField({ id, label, value, onChange, placeholder, type = 'text', className = '' }) {
+function TextField({ id, label, value, onChange, placeholder, type = 'text', className = '', disabled = false }) {
   return (
     <div>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
@@ -48,23 +65,8 @@ function TextField({ id, label, value, onChange, placeholder, type = 'text', cla
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         type={type}
+        disabled={disabled}
         className={`glass-input vendor-field-input ${className}`.trim()}
-      />
-    </div>
-  )
-}
-
-function TextAreaField({ id, label, value, onChange, placeholder, rows = 4 }) {
-  return (
-    <div>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <textarea
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={rows}
-        className="glass-input vendor-field-input"
       />
     </div>
   )
@@ -94,12 +96,14 @@ function CMSModal({ open, onClose, onSubmit, submitting, initialValues, mode = '
     meta_description: '',
     meta_keywords: '',
   })
+  const [faqItems, setFaqItems] = useState([createEmptyFaqItem()])
+  const [faqIntro, setFaqIntro] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
 
   useEffect(() => {
     if (!open) return
     setFieldErrors({})
-    setForm({
+    const nextForm = {
       slug: initialValues?.slug ?? '',
       title: initialValues?.title ?? '',
       subtitle: initialValues?.subtitle ?? '',
@@ -107,19 +111,63 @@ function CMSModal({ open, onClose, onSubmit, submitting, initialValues, mode = '
       meta_title: initialValues?.meta_title ?? '',
       meta_description: initialValues?.meta_description ?? '',
       meta_keywords: initialValues?.meta_keywords ?? '',
-    })
+    }
+    setForm(nextForm)
+
+    if (isFaqSlug(nextForm.slug) || (nextForm.description || '').includes('"type":"faq"')) {
+      const parsed = parseFaqPayload(nextForm.description)
+      setFaqItems(parsed.items)
+      setFaqIntro(parsed.intro || '')
+    } else {
+      setFaqItems([createEmptyFaqItem()])
+      setFaqIntro('')
+    }
   }, [open, initialValues])
 
   if (!open) return null
 
-  const set = (k) => (v) => setForm((prev) => ({ ...prev, [k]: v }))
+  const faqMode = isFaqSlug(form.slug)
+  const set = (k) => (v) => {
+    setForm((prev) => {
+      const next = { ...prev, [k]: v }
+      if (k === 'slug' && isFaqSlug(v) && !isFaqSlug(prev.slug)) {
+        const parsed = parseFaqPayload(prev.description)
+        setFaqItems(parsed.items?.length ? parsed.items : [createEmptyFaqItem()])
+        setFaqIntro(parsed.intro || '')
+      }
+      return next
+    })
+  }
+
+  const updateFaqItem = (id, field, value) => {
+    setFaqItems((current) =>
+      current.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
+    )
+  }
+
+  const addFaqItem = () => {
+    setFaqItems((current) => [...current, createEmptyFaqItem()])
+  }
+
+  const removeFaqItem = (id) => {
+    setFaqItems((current) => (current.length <= 1 ? current : current.filter((item) => item.id !== id)))
+  }
 
   const validate = () => {
     const errors = {}
     if (!form.slug.trim()) errors.slug = 'Slug is required.'
     if (!form.title.trim()) errors.title = 'Title is required.'
-    if (!form.subtitle.trim()) errors.subtitle = 'Subtitle is required.'
-    if (!form.description.trim()) errors.description = 'Description is required.'
+
+    if (faqMode) {
+      const validItems = faqItems.filter((item) => item.question.trim() && item.answer.trim())
+      if (!validItems.length) errors.description = 'Add at least one FAQ question and answer.'
+    } else {
+      const plain = String(form.description || '')
+        .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .trim()
+      if (!plain) errors.description = 'Page content is required.'
+    }
     return errors
   }
 
@@ -129,19 +177,46 @@ function CMSModal({ open, onClose, onSubmit, submitting, initialValues, mode = '
     const errors = validate()
     setFieldErrors(errors)
     if (Object.keys(errors).length > 0) return
-    onSubmit(form)
+
+    const payload = { ...form }
+    if (faqMode) {
+      payload.description = serializeFaqPayload({
+        intro: faqIntro,
+        items: faqItems,
+      })
+    }
+    onSubmit(payload)
   }
 
-  const titleText = isView ? 'CMS Details' : isEdit ? 'Edit CMS' : 'Add CMS'
-  const buttonText = isView ? '' : isEdit ? (submitting ? 'Updating...' : 'Update CMS') : (submitting ? 'Creating...' : 'Create CMS')
+  const applyPreset = (slug) => {
+    const preset = CMS_PAGE_PRESETS.find((item) => item.slug === slug)
+    if (!preset) return
+    setForm((prev) => ({
+      ...prev,
+      slug: preset.slug,
+      title: prev.title || preset.title,
+      subtitle: prev.subtitle || preset.subtitle,
+      meta_title: prev.meta_title || `${preset.title} | ShieldX`,
+    }))
+    if (isFaqSlug(preset.slug)) {
+      setFaqItems((current) => (current[0]?.question ? current : [createEmptyFaqItem()]))
+    }
+  }
+
+  const titleText = isView ? 'CMS Details' : isEdit ? 'Edit CMS Page' : 'Add CMS Page'
+  const buttonText = isView ? '' : isEdit ? (submitting ? 'Updating...' : 'Update Page') : (submitting ? 'Creating...' : 'Create Page')
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
-      <div className="vendor-modal vendor-modal-scroll rounded-xl border border-white/10 bg-black/40 p-6 backdrop-blur-xl w-full max-w-4xl max-h-[90vh]">
+      <div className="vendor-modal vendor-modal-scroll rounded-xl border border-white/10 bg-black/40 p-6 backdrop-blur-xl w-full max-w-5xl max-h-[92vh]">
         <div className="vendor-modal-header">
           <div>
             <h3 className="vendor-modal-title">{titleText}</h3>
-            <p className="vendor-modal-subtitle">CMS content (slug, title, meta...)</p>
+            <p className="vendor-modal-subtitle">
+              {faqMode
+                ? 'FAQ uses dropdown Q&A items. Customers expand one question at a time on the website.'
+                : 'Manage About Us, Contact, FAQ, and policy pages with rich text and alignment.'}
+            </p>
           </div>
           <button type="button" className="vendor-modal-close" onClick={onClose} aria-label="Close">
             <Icon path={paths.close} className="h-5 w-5" />
@@ -149,36 +224,130 @@ function CMSModal({ open, onClose, onSubmit, submitting, initialValues, mode = '
         </div>
 
         <form onSubmit={handleSubmit} className="mt-4 grid gap-4 grid-cols-1 md:grid-cols-2">
+          {!isView ? (
+            <div className="md:col-span-2">
+              <FieldLabel htmlFor="cms-preset">Quick page type</FieldLabel>
+              <select
+                id="cms-preset"
+                className="glass-input vendor-field-input"
+                defaultValue=""
+                onChange={(event) => {
+                  if (event.target.value) applyPreset(event.target.value)
+                }}
+              >
+                <option value="">Select preset (About, Contact, FAQ…)</option>
+                {CMS_PAGE_PRESETS.map((preset) => (
+                  <option key={preset.slug} value={preset.slug}>
+                    {preset.title} ({preset.slug})
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
           <div>
-            <TextField id="cms-slug" label="Slug" value={form.slug} onChange={set('slug')} placeholder="contact-us-111" disabled={isView} />
+            <TextField id="cms-slug" label="Slug" value={form.slug} onChange={set('slug')} placeholder="about-us" disabled={isView} />
             {fieldErrors.slug ? <p className="vendor-form-error mt-2">{fieldErrors.slug}</p> : null}
           </div>
 
           <div>
-            <TextField id="cms-title" label="Title" value={form.title} onChange={set('title')} placeholder="Contact Us" disabled={isView} />
+            <TextField id="cms-title" label="Title" value={form.title} onChange={set('title')} placeholder="About Us" disabled={isView} />
             {fieldErrors.title ? <p className="vendor-form-error mt-2">{fieldErrors.title}</p> : null}
           </div>
 
-          <div>
-            <TextField id="cms-subtitle" label="Subtitle" value={form.subtitle} onChange={set('subtitle')} placeholder="Who We Are 1" disabled={isView} />
-            {fieldErrors.subtitle ? <p className="vendor-form-error mt-2">{fieldErrors.subtitle}</p> : null}
-          </div>
-
           <div className="md:col-span-2">
-            <TextAreaField
-              id="cms-description"
-              label="Description"
-              value={form.description}
-              onChange={set('description')}
-              placeholder="Short description..."
-              rows={6}
-              disabled={isView}
-            />
-            {fieldErrors.description ? <p className="vendor-form-error mt-2">{fieldErrors.description}</p> : null}
+            <TextField id="cms-subtitle" label="Subtitle" value={form.subtitle} onChange={set('subtitle')} placeholder="Who we are" disabled={isView} />
           </div>
 
+          {faqMode ? (
+            <div className="md:col-span-2 space-y-4">
+              <div>
+                <FieldLabel htmlFor="cms-faq-intro">Intro text (optional)</FieldLabel>
+                <textarea
+                  id="cms-faq-intro"
+                  value={faqIntro}
+                  disabled={isView}
+                  onChange={(event) => setFaqIntro(event.target.value)}
+                  rows={2}
+                  placeholder="Short intro shown above the FAQ dropdowns"
+                  className="glass-input vendor-field-input"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-200">FAQ dropdowns</p>
+                  <p className="text-xs text-slate-500">Each item becomes an expandable question on the storefront.</p>
+                </div>
+                {!isView ? (
+                  <button
+                    type="button"
+                    onClick={addFaqItem}
+                    className="rounded-xl bg-brand-500/20 px-3 py-2 text-xs font-semibold text-brand-200 transition hover:bg-brand-500/30"
+                  >
+                    + Add question
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="space-y-3">
+                {faqItems.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                        Question {index + 1}
+                      </p>
+                      {!isView && faqItems.length > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => removeFaqItem(item.id)}
+                          className="text-xs font-semibold text-rose-300 hover:text-rose-200"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                    <input
+                      value={item.question}
+                      disabled={isView}
+                      onChange={(event) => updateFaqItem(item.id, 'question', event.target.value)}
+                      placeholder="e.g. How long does delivery take?"
+                      className="glass-input vendor-field-input mb-3"
+                    />
+                    <textarea
+                      value={item.answer}
+                      disabled={isView}
+                      onChange={(event) => updateFaqItem(item.id, 'answer', event.target.value)}
+                      placeholder="Answer shown when customer expands this dropdown"
+                      rows={3}
+                      className="glass-input vendor-field-input"
+                    />
+                  </div>
+                ))}
+              </div>
+              {fieldErrors.description ? <p className="vendor-form-error">{fieldErrors.description}</p> : null}
+            </div>
+          ) : (
+            <div className="md:col-span-2">
+              <FieldLabel htmlFor="cms-description">Page content</FieldLabel>
+              <p className="mb-2 text-xs text-slate-500">
+                Use the toolbar for bold, lists, links, and text alignment (left / center / right / justify).
+              </p>
+              <CmsRichEditor
+                value={form.description}
+                onChange={set('description')}
+                readOnly={isView}
+                placeholder="Write About Us, Contact, or policy content…"
+              />
+              {fieldErrors.description ? <p className="vendor-form-error mt-2">{fieldErrors.description}</p> : null}
+            </div>
+          )}
+
           <div>
-            <TextField id="cms-meta-title" label="Meta Title" value={form.meta_title} onChange={set('meta_title')} placeholder="About ShieldXCart" disabled={isView} />
+            <TextField id="cms-meta-title" label="Meta Title" value={form.meta_title} onChange={set('meta_title')} placeholder="About ShieldX" disabled={isView} />
           </div>
 
           <div>

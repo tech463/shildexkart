@@ -2586,4 +2586,47 @@
       background: linear-gradient(145deg, rgba(255, 255, 255, 0.55) 0%, transparent 50%);
       pointer-events: none;
     }
+
+    /* CMS Quill editor (dark admin theme) */
+    .cms-rich-editor {
+      border-radius: 0.85rem;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(15, 23, 42, 0.55);
+    }
+    .cms-rich-editor .ql-toolbar.ql-snow {
+      border: 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .cms-rich-editor .ql-container.ql-snow {
+      border: 0;
+      min-height: 220px;
+      font-size: 0.95rem;
+      color: #e2e8f0;
+    }
+    .cms-rich-editor .ql-editor {
+      min-height: 220px;
+    }
+    .cms-rich-editor .ql-editor.ql-blank::before {
+      color: #64748b;
+      font-style: normal;
+    }
+    .cms-rich-editor .ql-stroke {
+      stroke: #94a3b8;
+    }
+    .cms-rich-editor .ql-fill {
+      fill: #94a3b8;
+    }
+    .cms-rich-editor .ql-picker {
+      color: #cbd5e1;
+    }
+    .cms-rich-editor .ql-picker-options {
+      background: #0f172a;
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+    .cms-rich-editor.is-readonly .ql-toolbar {
+      opacity: 0.55;
+      pointer-events: none;
+    }
   
