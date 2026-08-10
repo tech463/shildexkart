@@ -32,6 +32,8 @@ const PAGE_GROUP = {
   'completed-payments': 'payment',
   'refunded-payments': 'payment',
   'failed-payments': 'payment',
+  notifications: 'notifications',
+  'notification-inbox': 'notifications',
   account: 'settings',
   wallet: 'settings',
   security: 'settings',
@@ -76,6 +78,14 @@ const dropdowns = [
       { id: 'completed-payments', label: 'Completed', status: 'check' },
       { id: 'refunded-payments', label: 'Refunded', icon: ClockIcon },
       { id: 'failed-payments', label: 'Failed', icon: ClockIcon },
+    ],
+  },
+  {
+    id: 'notifications', label: 'Notifications', icon: BellIcon, itemClass: 'nav-item-notifications',
+    buttonClass: 'hover:bg-sky-950/40 hover:text-sky-400',
+    links: [
+      { id: 'notification-inbox', label: 'My Inbox', icon: MailIcon },
+      { id: 'notifications', label: 'Direct Broadcast', icon: BellIcon },
     ],
   },
   {
@@ -184,7 +194,6 @@ function Sidebar({ currentPage, collapsed = false }) {
             ['addresses', 'Addresses', MailIcon],
             ['invoices', 'Invoices', InvoiceIcon],
             ['coupons', 'Coupons', StarIcon],
-            ['notifications', 'Notifications', BellIcon],
           ].map(([id, label, Icon]) => (
             <li key={id}>
               <NavLink to={pageToPath(id)} data-page={id} className={`${mainLinkClass} ${activeClassFor(id)}`}>
@@ -192,6 +201,8 @@ function Sidebar({ currentPage, collapsed = false }) {
               </NavLink>
             </li>
           ))}
+
+          {dropdowns.filter((item) => item.id === 'notifications').map(renderDropdown)}
 
           {dropdowns.filter((item) => item.id === 'settings').map(renderDropdown)}
         </ul>

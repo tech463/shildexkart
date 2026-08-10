@@ -23,6 +23,7 @@ import EntityListPage from './pages/EntityListPage'
 import Invoices from './pages/Invoices'
 import Login from './pages/Login'
 import Notifications from './pages/Notifications'
+import NotificationInbox from './pages/NotificationInbox'
 import Orders from './pages/Orders'
 import PaymentsPage from './pages/PaymentsPage'
 import AddProduct from './pages/AddProduct'
@@ -135,6 +136,7 @@ const AddressesPage = withNav(Addresses)
 const InvoicesPage = withNav(Invoices)
 const CouponsPage = withNav(Coupons)
 const NotificationsPage = withNav(Notifications)
+const NotificationInboxPage = withNav(NotificationInbox)
 const AccountPage = withNav(Account)
 const WalletPage = withNav(Wallet)
 const SecurityPage = withNav(Security)
@@ -283,6 +285,7 @@ export default function App() {
         <Route path="invoices" element={<InvoicesPage />} />
         <Route path="coupons" element={<CouponsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="notifications/inbox" element={<NotificationInboxPage />} />
 
         <Route path="settings/account" element={<AccountPage />} />
         <Route path="settings/wallet" element={<WalletPage />} />

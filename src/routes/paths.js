@@ -29,6 +29,7 @@ export const PAGE_PATHS = {
   invoices: '/invoices',
   coupons: '/coupons',
   notifications: '/notifications',
+  'notification-inbox': '/notifications/inbox',
   account: '/settings/account',
   wallet: '/settings/wallet',
   security: '/settings/security',
@@ -64,6 +65,7 @@ export function pathToPageId(pathname) {
     if (PAGE_PATHS[key]) return key
   }
   if (normalized.startsWith('/settings/')) return normalized.slice('/settings/'.length)
+  if (normalized.startsWith('/notifications/')) return 'notification-inbox'
 
   return 'dashboard'
 }

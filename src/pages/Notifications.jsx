@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import {
   ALERT_TYPES,
   AUDIENCE_OPTIONS,
   NOTIFICATION_TEMPLATES,
-  NOTIFICATIONS_HISTORY,
 } from '../data/notifications'
+import {
+  deleteNotificationAPI,
+  dispatchNotificationAPI,
+  fetchNotificationsAPI,
+  updateNotificationAPI,
+} from '../services/notificationService'
 
 function Icon({ path, className = 'h-4 w-4' }) {
   return (
@@ -37,22 +42,15 @@ const emptyForm = {
   scheduleAt: '',
 }
 
-function formatTimestamp(date = new Date()) {
-  return date.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  }).replace(',', '')
+function apiErrorMessage(err, fallback) {
+  return err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback
 }
 
 function alertMeta(alertType) {
   return ALERT_TYPES.find((item) => item.id === alertType) || ALERT_TYPES[0]
 }
 
-function NotificationEditModal({ open, onClose, onSubmit, item }) {
+function NotificationEditModal({ open, onClose, onSubmit, item, saving }) {
   const [form, setForm] = useState(emptyForm)
   const [error, setError] = useState('')
 
@@ -73,14 +71,14 @@ function NotificationEditModal({ open, onClose, onSubmit, item }) {
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape' && !saving) onClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.body.style.overflow = previousOverflow
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open, onClose, item])
+  }, [open, onClose, item, saving])
 
   if (!open || !item) return null
 
@@ -89,27 +87,33 @@ function NotificationEditModal({ open, onClose, onSubmit, item }) {
     setForm((current) => ({ ...current, [key]: value }))
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
+    if (saving) return
     if (!form.title.trim() || !form.body.trim()) {
       setError('Title and message body are required.')
       return
     }
-    onSubmit({
-      id: item.id,
-      title: form.title.trim(),
-      body: form.body.trim(),
-      description: form.description.trim(),
-      user: form.audience,
-      alertType: form.alertType,
-      type: alertMeta(form.alertType).label,
-      actionLink: form.actionLink.trim(),
-      imageUrl: form.imageUrl.trim(),
-    })
+    setError('')
+    try {
+      await onSubmit({
+        id: item.id,
+        title: form.title.trim(),
+        body: form.body.trim(),
+        description: form.description.trim(),
+        user: form.audience,
+        alertType: form.alertType,
+        type: alertMeta(form.alertType).label,
+        actionLink: form.actionLink.trim(),
+        imageUrl: form.imageUrl.trim(),
+      })
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to update notification.'))
+    }
   }
 
   return (
-    <div className="vendor-modal-overlay" onClick={onClose} role="presentation">
+    <div className="vendor-modal-overlay" onClick={saving ? undefined : onClose} role="presentation">
       <div
         className="vendor-modal vendor-modal-category glass-card"
         role="dialog"
@@ -121,7 +125,7 @@ function NotificationEditModal({ open, onClose, onSubmit, item }) {
             <span className="vendor-modal-title-muted">Edit </span>
             <span className="vendor-modal-title-accent">Notification</span>
           </h3>
-          <button type="button" className="action-btn" aria-label="Close" onClick={onClose}>
+          <button type="button" className="action-btn" aria-label="Close" onClick={onClose} disabled={saving}>
             <Icon path={paths.close} />
           </button>
         </div>
@@ -129,16 +133,16 @@ function NotificationEditModal({ open, onClose, onSubmit, item }) {
           <div className="vendor-modal-body space-y-4">
             <div>
               <label className="vendor-field-label" htmlFor="edit-notif-title">Title</label>
-              <input id="edit-notif-title" className="glass-input vendor-field-input" value={form.title} onChange={updateField('title')} />
+              <input id="edit-notif-title" className="glass-input vendor-field-input" value={form.title} onChange={updateField('title')} disabled={saving} />
             </div>
             <div>
               <label className="vendor-field-label" htmlFor="edit-notif-body">Message Body</label>
-              <textarea id="edit-notif-body" className="glass-input vendor-field-input min-h-[88px] resize-y" value={form.body} onChange={updateField('body')} />
+              <textarea id="edit-notif-body" className="glass-input vendor-field-input min-h-[88px] resize-y" value={form.body} onChange={updateField('body')} disabled={saving} />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="vendor-field-label" htmlFor="edit-notif-audience">Audience</label>
-                <select id="edit-notif-audience" className="glass-input vendor-field-input" value={form.audience} onChange={updateField('audience')}>
+                <select id="edit-notif-audience" className="glass-input vendor-field-input" value={form.audience} onChange={updateField('audience')} disabled={saving}>
                   {AUDIENCE_OPTIONS.map((option) => <option key={option}>{option}</option>)}
                 </select>
               </div>
@@ -152,8 +156,10 @@ function NotificationEditModal({ open, onClose, onSubmit, item }) {
             {error ? <p className="text-xs font-medium text-red-400">{error}</p> : null}
           </div>
           <div className="vendor-modal-footer">
-            <button type="button" onClick={onClose} className="vendor-btn-cancel w-full">Cancel</button>
-            <button type="submit" className="btn-glass vendor-btn-submit w-full !min-w-0">Save Changes</button>
+            <button type="button" onClick={onClose} className="vendor-btn-cancel w-full" disabled={saving}>Cancel</button>
+            <button type="submit" className="btn-glass vendor-btn-submit w-full !min-w-0" disabled={saving}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
           </div>
         </form>
       </div>
@@ -204,6 +210,12 @@ function NotificationViewModal({ open, onClose, item }) {
             <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Body</p>
             <p className="text-sm text-slate-300">{item.body}</p>
           </div>
+          {item.description ? (
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Description</p>
+              <p className="text-sm text-slate-300">{item.description}</p>
+            </div>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Type</p>
@@ -221,6 +233,18 @@ function NotificationViewModal({ open, onClose, item }) {
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Status</p>
               <p className="text-sm text-slate-200">{item.status}</p>
             </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Reach</p>
+              <p className="text-sm text-slate-300">
+                {item.totalRecipients || 0} recipients · {item.emailSentCount || 0} emails
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Reads</p>
+              <p className="text-sm text-slate-300">
+                {(item.totalRecipients || 0) - (item.unreadCount || 0)} / {item.totalRecipients || 0}
+              </p>
+            </div>
           </div>
         </div>
         <div className="vendor-modal-footer">
@@ -236,14 +260,18 @@ export default function Notifications({ onNavigate }) {
   const [wallpaper, setWallpaper] = useState('dark')
   const [historyTab, setHistoryTab] = useState('sent')
   const [readFilter, setReadFilter] = useState('all')
-  const [sentItems, setSentItems] = useState(() => NOTIFICATIONS_HISTORY.filter((item) => item.kind === 'sent'))
-  const [scheduledItems, setScheduledItems] = useState(() => NOTIFICATIONS_HISTORY.filter((item) => item.kind === 'scheduled'))
+  const [sentItems, setSentItems] = useState([])
+  const [scheduledItems, setScheduledItems] = useState([])
   const [selectedIds, setSelectedIds] = useState([])
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
   const [viewing, setViewing] = useState(null)
   const [editing, setEditing] = useState(null)
   const [deleting, setDeleting] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [dispatching, setDispatching] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
 
   const alert = alertMeta(form.alertType)
   const previewTitle = form.title.trim() || 'Notification Title'
@@ -256,6 +284,32 @@ export default function Notifications({ onNavigate }) {
       date: now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase(),
     }
   }, [])
+
+  const loadHistory = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [sentRes, scheduledRes] = await Promise.all([
+        fetchNotificationsAPI({ kind: 'sent', limit: 100, read_filter: 'all' }),
+        fetchNotificationsAPI({ kind: 'scheduled', limit: 100, read_filter: 'all' }),
+      ])
+      setSentItems(Array.isArray(sentRes?.data) ? sentRes.data : [])
+      setScheduledItems(Array.isArray(scheduledRes?.data) ? scheduledRes.data : [])
+    } catch (err) {
+      setToast(apiErrorMessage(err, 'Failed to load notification history.'))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadHistory()
+  }, [loadHistory])
+
+  useEffect(() => {
+    if (!toast) return undefined
+    const timer = setTimeout(() => setToast(''), 2800)
+    return () => clearTimeout(timer)
+  }, [toast])
 
   const activeList = historyTab === 'sent' ? sentItems : scheduledItems
   const filteredList = useMemo(() => {
@@ -284,8 +338,9 @@ export default function Notifications({ onNavigate }) {
     }))
   }
 
-  const dispatchNotification = (event) => {
+  const dispatchNotification = async (event) => {
     event.preventDefault()
+    if (dispatching) return
     if (!form.title.trim() || !form.body.trim()) {
       setError('Please enter a title and message body.')
       return
@@ -294,34 +349,34 @@ export default function Notifications({ onNavigate }) {
       setError('Please choose a schedule date and time.')
       return
     }
+
+    const wasScheduled = form.scheduleLater
     setError('')
-    const stamp = formatTimestamp()
-    const next = {
-      id: Date.now(),
-      title: form.title.trim(),
-      body: form.body.trim(),
-      description: form.description.trim(),
-      type: alert.label,
-      alertType: form.alertType,
-      user: form.audience,
-      sentTime: form.scheduleLater ? form.scheduleAt.replace('T', ' ') : stamp,
-      status: form.scheduleLater ? 'Scheduled' : 'Sent',
-      read: false,
-      kind: form.scheduleLater ? 'scheduled' : 'sent',
-      actionLink: form.actionLink.trim(),
-      imageUrl: form.imageUrl.trim(),
+    setDispatching(true)
+    try {
+      const res = await dispatchNotificationAPI({
+        title: form.title.trim(),
+        body: form.body.trim(),
+        description: form.description.trim(),
+        audience: form.audience,
+        alert_type: form.alertType,
+        action_link: form.actionLink.trim(),
+        image_url: form.imageUrl.trim(),
+        schedule_later: wasScheduled,
+        schedule_at: wasScheduled ? form.scheduleAt : null,
+        send_email: true,
+        send_web: true,
+      })
+
+      setForm(emptyForm)
+      setToast(res?.message || (wasScheduled ? 'Notification scheduled.' : 'Notification dispatched.'))
+      setHistoryTab(wasScheduled ? 'scheduled' : 'sent')
+      await loadHistory()
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to dispatch notification.'))
+    } finally {
+      setDispatching(false)
     }
-    if (form.scheduleLater) {
-      setScheduledItems((current) => [next, ...current])
-      setHistoryTab('scheduled')
-      setToast('Notification scheduled successfully.')
-    } else {
-      setSentItems((current) => [next, ...current])
-      setHistoryTab('sent')
-      setToast('Notification dispatched successfully.')
-    }
-    setForm(emptyForm)
-    window.setTimeout(() => setToast(''), 2500)
   }
 
   const toggleSelectAll = () => {
@@ -338,37 +393,74 @@ export default function Notifications({ onNavigate }) {
     ))
   }
 
-  const deleteItem = (id) => {
-    setSentItems((current) => current.filter((item) => item.id !== id))
-    setScheduledItems((current) => current.filter((item) => item.id !== id))
-    setSelectedIds((current) => current.filter((value) => value !== id))
-    setDeleting(null)
+  const deleteItem = async (id) => {
+    if (!id || deletingId) return
+    setDeletingId(id)
+    try {
+      const res = await deleteNotificationAPI(id)
+      setSentItems((current) => current.filter((item) => item.id !== id))
+      setScheduledItems((current) => current.filter((item) => item.id !== id))
+      setSelectedIds((current) => current.filter((value) => value !== id))
+      setDeleting(null)
+      setToast(res?.message || 'Notification deleted.')
+    } catch (err) {
+      setToast(apiErrorMessage(err, 'Failed to delete notification.'))
+    } finally {
+      setDeletingId(null)
+    }
   }
 
-  const updateItem = (payload) => {
-    const mapper = (item) => (item.id === payload.id ? { ...item, ...payload } : item)
-    setSentItems((current) => current.map(mapper))
-    setScheduledItems((current) => current.map(mapper))
-    setEditing(null)
+  const updateItem = async (payload) => {
+    setSaving(true)
+    try {
+      const res = await updateNotificationAPI(payload.id, {
+        title: payload.title,
+        body: payload.body,
+        description: payload.description,
+        audience: payload.user,
+        alert_type: payload.alertType,
+        action_link: payload.actionLink,
+        image_url: payload.imageUrl,
+      })
+      const next = res?.data
+      if (next) {
+        setScheduledItems((current) => current.map((item) => (item.id === next.id ? next : item)))
+      }
+      setEditing(null)
+      setToast(res?.message || 'Notification updated.')
+    } catch (err) {
+      throw err
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
     <section id="page-notifications" className="page-view">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="title-xl !text-2xl">Direct Notifications</h2>
-        <nav className="breadcrumb" aria-label="Breadcrumb">
-          <a
-            href="#"
-            onClick={(event) => {
-              event.preventDefault()
-              onNavigate?.('dashboard')
-            }}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => onNavigate?.('notification-inbox')}
+            className="btn-glass rounded-xl px-3 py-2 text-xs font-semibold"
           >
-            Home
-          </a>
-          <span className="mx-2 text-slate-600">›</span>
-          <span>Direct Notifications</span>
-        </nav>
+            Open My Inbox
+          </button>
+          <nav className="breadcrumb" aria-label="Breadcrumb">
+            <a
+              href="#"
+              onClick={(event) => {
+                event.preventDefault()
+                onNavigate?.('dashboard')
+              }}
+            >
+              Home
+            </a>
+            <span className="mx-2 text-slate-600">›</span>
+            <span>Direct Notifications</span>
+          </nav>
+        </div>
       </div>
 
       {toast ? <div className="notif-toast mb-4">{toast}</div> : null}
@@ -384,7 +476,7 @@ export default function Notifications({ onNavigate }) {
               <div>
                 <h3 className="font-display text-sm font-bold tracking-wide text-shield">Compose Direct Broadcast</h3>
                 <p className="mt-1 text-xs text-slate-400">
-                  Send instant WebSocket notifications directly to target user categories.
+                  Send email + live web notifications to the selected audience.
                 </p>
               </div>
             </div>
@@ -494,9 +586,13 @@ export default function Notifications({ onNavigate }) {
 
             {error ? <p className="text-xs font-medium text-red-400">{error}</p> : null}
 
-            <button type="submit" className="notif-dispatch-btn w-full">
+            <button type="submit" className="notif-dispatch-btn w-full" disabled={dispatching}>
               <Icon path={paths.send} className="h-4 w-4" />
-              {form.scheduleLater ? 'SCHEDULE NOTIFICATION' : 'DISPATCH NOTIFICATION NOW'}
+              {dispatching
+                ? 'SENDING...'
+                : form.scheduleLater
+                  ? 'SCHEDULE NOTIFICATION'
+                  : 'DISPATCH NOTIFICATION NOW'}
             </button>
           </form>
         </div>
@@ -599,7 +695,11 @@ export default function Notifications({ onNavigate }) {
               </tr>
             </thead>
             <tbody>
-              {filteredList.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-sm text-slate-500">Loading notifications...</td>
+                </tr>
+              ) : filteredList.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-sm text-slate-500">
                     {historyTab === 'sent' ? 'No notifications dispatched yet.' : 'No scheduled messages yet.'}
@@ -619,6 +719,9 @@ export default function Notifications({ onNavigate }) {
                   <td className="min-w-[220px]">
                     <p className="font-medium text-slate-200">{item.title}</p>
                     <p className="text-xs text-slate-500 line-clamp-1">{item.body}</p>
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      {item.totalRecipients || 0} users · {item.emailSentCount || 0} mails
+                    </p>
                   </td>
                   <td className="whitespace-nowrap text-slate-300">{item.type}</td>
                   <td className="whitespace-nowrap text-slate-300">{item.user}</td>
@@ -636,9 +739,11 @@ export default function Notifications({ onNavigate }) {
                           <path strokeLinecap="round" strokeLinejoin="round" d={paths.viewEye} />
                         </svg>
                       </button>
-                      <button type="button" className="action-btn" aria-label={`Edit ${item.title}`} onClick={() => setEditing(item)}>
-                        <Icon path={paths.edit} />
-                      </button>
+                      {item.kind === 'scheduled' ? (
+                        <button type="button" className="action-btn" aria-label={`Edit ${item.title}`} onClick={() => setEditing(item)}>
+                          <Icon path={paths.edit} />
+                        </button>
+                      ) : null}
                       <button type="button" className="action-btn action-btn-danger" aria-label={`Delete ${item.title}`} onClick={() => setDeleting(item)}>
                         <Icon path={paths.delete} />
                       </button>
@@ -652,10 +757,16 @@ export default function Notifications({ onNavigate }) {
       </div>
 
       <NotificationViewModal open={Boolean(viewing)} onClose={() => setViewing(null)} item={viewing} />
-      <NotificationEditModal open={Boolean(editing)} onClose={() => setEditing(null)} onSubmit={updateItem} item={editing} />
+      <NotificationEditModal
+        open={Boolean(editing)}
+        onClose={() => (!saving ? setEditing(null) : null)}
+        onSubmit={updateItem}
+        item={editing}
+        saving={saving}
+      />
       <DeleteConfirmModal
         open={Boolean(deleting)}
-        onClose={() => setDeleting(null)}
+        onClose={() => (!deletingId ? setDeleting(null) : null)}
         onConfirm={() => deleteItem(deleting.id)}
         itemName={deleting?.title || ''}
         title="Delete Item"
