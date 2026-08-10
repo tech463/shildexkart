@@ -46,6 +46,11 @@ export const updateProductAPI = async (id, formData) => {
   return response.data
 }
 
+export const updateProductInventoryAPI = async (id, payload) => {
+  const response = await api.post(`/v1/product/inventory/${id}`, payload)
+  return response.data
+}
+
 export const setProductStatusAPI = async (id, isActive) => {
   const response = await api.post(`/v1/product/status/${id}`, {
     is_active: Boolean(isActive),

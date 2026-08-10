@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
-import { STOCK_INVENTORY_DATA, STOCK_PAGE_TYPES } from '../data/stockInventory'
+import { STOCK_PAGE_TYPES } from '../data/stockInventory'
+import {
+  deleteProductAPI,
+  fetchProductsAPI,
+  updateProductInventoryAPI,
+} from '../services/productService'
 
 function Icon({ path, className = 'h-4 w-4' }) {
   return (
@@ -33,6 +38,7 @@ const STOCK_TABS = [
 ]
 
 const UNIT_OPTIONS = ['pcs', 'box', 'roll', 'day', 'kg', 'ltr']
+const LOW_STOCK_MAX = 10
 
 function formatRupee(value) {
   return `₹${(Number(value) || 0).toLocaleString('en-IN')}`
@@ -49,44 +55,51 @@ function formatTimestamp(date = new Date()) {
   }).replace(',', '')
 }
 
-function parseStockDate(value) {
-  if (!value) return null
-  const match = String(value).match(/^(\d{1,2})-([A-Za-z]+)-(\d{4})/)
-  if (!match) {
-    const fallback = new Date(value)
-    return Number.isNaN(fallback.getTime()) ? null : fallback
-  }
-  const [, day, monthName, year] = match
-  const parsed = new Date(`${monthName} ${day}, ${year} 00:00:00`)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
+function formatApiDate(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : formatTimestamp(date)
 }
 
-function isWithinDateRange(item, startDate, endDate) {
-  if (!startDate && !endDate) return true
-  const created = parseStockDate(item.created)
-  const updated = parseStockDate(item.updated)
-  const start = startDate ? new Date(`${startDate}T00:00:00`) : null
-  const end = endDate ? new Date(`${endDate}T23:59:59`) : null
-  const matches = (date) => {
-    if (!date) return false
-    if (start && date < start) return false
-    if (end && date > end) return false
-    return true
+function deriveStockType(stock) {
+  const qty = Number(stock) || 0
+  if (qty <= 0) return 'out-of-stock'
+  if (qty <= LOW_STOCK_MAX) return 'low-stock'
+  return 'in-stock'
+}
+
+function apiErrorMessage(err, fallback) {
+  return err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback
+}
+
+function mapInventoryProduct(row) {
+  if (!row) return null
+  const stock = Number(row.stock_qty ?? row.stock ?? 0)
+  const listPrice = Number(row.price ?? row.mrp ?? 0)
+  const salePrice = Number(row.discounted_price ?? row.sale_price ?? 0)
+  const selling = salePrice > 0 ? salePrice : listPrice
+
+  return {
+    id: row.id,
+    name: row.title || row.name || '',
+    imageUrl: row.cover_image || '',
+    price: selling,
+    mrp: listPrice,
+    stock,
+    unit: row.stock_unit || row.unit || 'pcs',
+    stockType: deriveStockType(stock),
+    stockStatus: row.stock_status || '',
+    active: Boolean(row.is_active),
+    sku: row.sku || '',
+    created: formatApiDate(row.created_at),
+    updated: formatApiDate(row.updated_at),
   }
-  return matches(created) || matches(updated)
 }
 
 function getStockFill(item) {
   if (item.stockType === 'out-of-stock' || item.stock <= 0) return 0
   if (item.stockType === 'low-stock') return Math.max(12, Math.min(40, (item.stock / 20) * 40))
   return Math.max(55, Math.min(100, (item.stock / 150) * 100))
-}
-
-function deriveStockType(stock) {
-  const qty = Number(stock) || 0
-  if (qty <= 0) return 'out-of-stock'
-  if (qty <= 10) return 'low-stock'
-  return 'in-stock'
 }
 
 function StockViewModal({ open, onClose, item }) {
@@ -133,6 +146,7 @@ function StockViewModal({ open, onClose, item }) {
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Product</p>
               <p className="text-sm font-semibold text-slate-200">{item.name}</p>
               <p className="text-xs text-slate-500">ID: {item.id}</p>
+              {item.sku ? <p className="text-xs text-slate-500">SKU: {item.sku}</p> : null}
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Price</p>
@@ -142,12 +156,18 @@ function StockViewModal({ open, onClose, item }) {
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Stock</p>
               <p className="text-sm text-slate-300">{item.stock} {item.unit}</p>
+              {item.stockStatus ? <p className="text-xs text-slate-500">{item.stockStatus}</p> : null}
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Status</p>
               <p className={`text-sm font-semibold ${item.active ? 'text-emerald-400' : 'text-slate-500'}`}>
                 {item.active ? 'Active' : 'Inactive'}
               </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Timestamps</p>
+              <p className="text-xs text-slate-400">Created: {item.created || '—'}</p>
+              <p className="text-xs text-slate-400">Updated: {item.updated || '—'}</p>
             </div>
           </div>
         </div>
@@ -159,7 +179,7 @@ function StockViewModal({ open, onClose, item }) {
   )
 }
 
-function StockEditModal({ open, onClose, onSubmit, item }) {
+function StockEditModal({ open, onClose, onSubmit, item, saving }) {
   const [form, setForm] = useState({
     name: '',
     price: '',
@@ -186,14 +206,14 @@ function StockEditModal({ open, onClose, onSubmit, item }) {
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape' && !saving) onClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.body.style.overflow = previousOverflow
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open, onClose, item])
+  }, [open, onClose, item, saving])
 
   if (!open || !item) return null
 
@@ -201,8 +221,9 @@ function StockEditModal({ open, onClose, onSubmit, item }) {
     setForm((current) => ({ ...current, [field]: event.target.value }))
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
+    if (saving) return
     if (!form.name.trim()) {
       setError('Please enter a product name.')
       return
@@ -219,19 +240,24 @@ function StockEditModal({ open, onClose, onSubmit, item }) {
       setError('Please enter a valid stock quantity.')
       return
     }
-    onSubmit({
-      id: item.id,
-      name: form.name.trim(),
-      price: Number(form.price) || 0,
-      mrp: Number(form.mrp) || 0,
-      stock: Number(form.stock) || 0,
-      unit: form.unit,
-      active: form.active === 'Active',
-    })
+    setError('')
+    try {
+      await onSubmit({
+        id: item.id,
+        name: form.name.trim(),
+        price: Number(form.price) || 0,
+        mrp: Number(form.mrp) || 0,
+        stock: Number(form.stock) || 0,
+        unit: form.unit,
+        active: form.active === 'Active',
+      })
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to update inventory.'))
+    }
   }
 
   return (
-    <div className="vendor-modal-overlay" onClick={onClose} role="presentation">
+    <div className="vendor-modal-overlay" onClick={saving ? undefined : onClose} role="presentation">
       <div
         className="vendor-modal vendor-modal-category glass-card"
         role="dialog"
@@ -244,7 +270,7 @@ function StockEditModal({ open, onClose, onSubmit, item }) {
             <span className="vendor-modal-title-muted">Edit </span>
             <span className="vendor-modal-title-accent">Inventory</span>
           </h3>
-          <button type="button" className="action-btn" aria-label="Close" onClick={onClose}>
+          <button type="button" className="action-btn" aria-label="Close" onClick={onClose} disabled={saving}>
             <Icon path={paths.close} />
           </button>
         </div>
@@ -258,6 +284,7 @@ function StockEditModal({ open, onClose, onSubmit, item }) {
                 onChange={updateField('name')}
                 className="glass-input vendor-field-input"
                 autoFocus
+                disabled={saving}
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -271,6 +298,7 @@ function StockEditModal({ open, onClose, onSubmit, item }) {
                   value={form.price}
                   onChange={updateField('price')}
                   className="glass-input vendor-field-input"
+                  disabled={saving}
                 />
               </div>
               <div>
@@ -283,6 +311,7 @@ function StockEditModal({ open, onClose, onSubmit, item }) {
                   value={form.mrp}
                   onChange={updateField('mrp')}
                   className="glass-input vendor-field-input"
+                  disabled={saving}
                 />
               </div>
               <div>
@@ -294,6 +323,7 @@ function StockEditModal({ open, onClose, onSubmit, item }) {
                   value={form.stock}
                   onChange={updateField('stock')}
                   className="glass-input vendor-field-input"
+                  disabled={saving}
                 />
               </div>
               <div>
@@ -303,6 +333,7 @@ function StockEditModal({ open, onClose, onSubmit, item }) {
                   value={form.unit}
                   onChange={updateField('unit')}
                   className="glass-input vendor-field-input"
+                  disabled={saving}
                 >
                   {[...new Set([form.unit, ...UNIT_OPTIONS])].filter(Boolean).map((option) => (
                     <option key={option} value={option}>{option}</option>
@@ -317,6 +348,7 @@ function StockEditModal({ open, onClose, onSubmit, item }) {
                 value={form.active}
                 onChange={updateField('active')}
                 className="glass-input vendor-field-input"
+                disabled={saving}
               >
                 <option>Active</option>
                 <option>Inactive</option>
@@ -325,8 +357,12 @@ function StockEditModal({ open, onClose, onSubmit, item }) {
             {error ? <p className="vendor-form-error">{error}</p> : null}
           </div>
           <div className="vendor-modal-footer grid grid-cols-2 gap-3">
-            <button type="button" onClick={onClose} className="vendor-btn-cancel w-full">Cancel</button>
-            <button type="submit" className="btn-glass vendor-btn-submit w-full !min-w-0">Save Changes</button>
+            <button type="button" onClick={onClose} className="vendor-btn-cancel w-full" disabled={saving}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-glass vendor-btn-submit w-full !min-w-0" disabled={saving}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
           </div>
         </form>
       </div>
@@ -336,16 +372,69 @@ function StockEditModal({ open, onClose, onSubmit, item }) {
 
 export default function StockInventoryPage({ stockType = 'in-stock', onNavigate }) {
   const config = STOCK_PAGE_TYPES[stockType] || STOCK_PAGE_TYPES['in-stock']
-  const [items, setItems] = useState(() => STOCK_INVENTORY_DATA.map((item) => ({ ...item })))
+  const [items, setItems] = useState([])
   const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [viewingItem, setViewingItem] = useState(null)
   const [editingItem, setEditingItem] = useState(null)
   const [deletingItem, setDeletingItem] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
+  const [toastSuccess, setToastSuccess] = useState('')
+  const [toastError, setToastError] = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), 350)
+    return () => clearTimeout(timer)
+  }, [query])
+
+  useEffect(() => {
+    if (!toastSuccess && !toastError) return undefined
+    const timer = setTimeout(() => {
+      setToastSuccess('')
+      setToastError('')
+    }, 3000)
+    return () => clearTimeout(timer)
+  }, [toastSuccess, toastError])
+
+  const loadInventory = useCallback(async (overrides = {}) => {
+    const searchValue = overrides.query !== undefined ? overrides.query : debouncedQuery
+    const fromValue = overrides.startDate !== undefined ? overrides.startDate : startDate
+    const toValue = overrides.endDate !== undefined ? overrides.endDate : endDate
+    const bandValue = overrides.stockType || stockType
+
+    setLoading(true)
+    setToastError('')
+    try {
+      const params = {
+        page: 1,
+        limit: 100,
+        stock_band: bandValue,
+        low_stock_max: LOW_STOCK_MAX,
+        sort: 'stock-desc',
+      }
+      const search = String(searchValue || '').trim()
+      if (search) params.search = search
+      if (fromValue) params.date_from = fromValue
+      if (toValue) params.date_to = toValue
+
+      const res = await fetchProductsAPI(params)
+      const rows = Array.isArray(res?.data) ? res.data : []
+      setItems(rows.map(mapInventoryProduct).filter(Boolean))
+    } catch (err) {
+      setItems([])
+      setToastError(apiErrorMessage(err, 'Failed to load inventory.'))
+    } finally {
+      setLoading(false)
+    }
+  }, [debouncedQuery, startDate, endDate, stockType])
 
   useEffect(() => {
     setQuery('')
+    setDebouncedQuery('')
     setStartDate('')
     setEndDate('')
     setViewingItem(null)
@@ -353,43 +442,66 @@ export default function StockInventoryPage({ stockType = 'in-stock', onNavigate 
     setDeletingItem(null)
   }, [stockType])
 
-  const filteredItems = useMemo(() => {
-    const search = query.trim().toLowerCase()
-    return items.filter((item) => (
-      item.stockType === stockType
-      && (!search || item.name.toLowerCase().includes(search) || String(item.id).toLowerCase().includes(search))
-      && isWithinDateRange(item, startDate, endDate)
-    ))
-  }, [items, stockType, query, startDate, endDate])
+  useEffect(() => {
+    loadInventory()
+  }, [loadInventory])
 
   const refresh = () => {
     setQuery('')
+    setDebouncedQuery('')
     setStartDate('')
     setEndDate('')
+    loadInventory({ query: '', startDate: '', endDate: '' })
   }
 
-  const updateItem = (payload) => {
-    const stamp = formatTimestamp()
-    setItems((current) => current.map((item) => {
-      if (item.id !== payload.id) return item
-      return {
-        ...item,
-        name: payload.name,
-        price: payload.price,
-        mrp: payload.mrp,
-        stock: payload.stock,
-        unit: payload.unit,
-        active: payload.active,
-        stockType: deriveStockType(payload.stock),
-        updated: stamp,
+  const updateItem = async (payload) => {
+    setSaving(true)
+    setToastError('')
+    try {
+      const res = await updateProductInventoryAPI(payload.id, {
+        title: payload.name,
+        price: payload.mrp,
+        discounted_price: payload.price,
+        stock_qty: payload.stock,
+        stock_unit: payload.unit,
+        is_active: payload.active,
+      })
+
+      const mapped = mapInventoryProduct(res?.data)
+      if (mapped) {
+        // Item may move to another stock band after qty change
+        if (mapped.stockType === stockType) {
+          setItems((current) => current.map((item) => (item.id === mapped.id ? mapped : item)))
+        } else {
+          setItems((current) => current.filter((item) => item.id !== mapped.id))
+        }
+      } else {
+        await loadInventory()
       }
-    }))
-    setEditingItem(null)
+
+      setEditingItem(null)
+      setToastSuccess(res?.message || 'Inventory updated.')
+    } catch (err) {
+      throw err
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const deleteItem = (id) => {
-    setItems((current) => current.filter((item) => item.id !== id))
-    setDeletingItem(null)
+  const deleteItem = async (id) => {
+    if (!id || deletingId) return
+    setDeletingId(id)
+    setToastError('')
+    try {
+      const res = await deleteProductAPI(id)
+      setItems((current) => current.filter((item) => item.id !== id))
+      setDeletingItem(null)
+      setToastSuccess(res?.message || 'Product deleted.')
+    } catch (err) {
+      setToastError(apiErrorMessage(err, 'Failed to delete product.'))
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const profileIcon = config.tone === 'warning'
@@ -495,11 +607,15 @@ export default function StockInventoryPage({ stockType = 'in-stock', onNavigate 
               onClick={refresh}
               className="btn-glass flex h-10 w-10 items-center justify-center rounded-xl"
               aria-label="Refresh"
+              disabled={loading}
             >
               <Icon path={paths.refresh} />
             </button>
           </div>
         </div>
+
+        {toastSuccess ? <div className="notif-toast mb-4">{toastSuccess}</div> : null}
+        {toastError ? <div className="vendor-form-error mb-4">{toastError}</div> : null}
 
         <div className="overflow-x-auto rounded-xl border border-white/5">
           <table className="vendors-table data-table w-full min-w-[1100px] text-left text-sm">
@@ -515,19 +631,25 @@ export default function StockInventoryPage({ stockType = 'in-stock', onNavigate 
               </tr>
             </thead>
             <tbody>
-              {filteredItems.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="py-14 text-center text-sm text-slate-400">
+                    Loading inventory...
+                  </td>
+                </tr>
+              ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-14">
                     <div className="stock-empty-state">
                       <span className="stock-empty-icon" aria-hidden="true">
                         <Icon path={paths.emptyDoc} className="h-8 w-8" />
                       </span>
-                      <p className="stock-empty-title">{config.emptyTitle}</p>
+                      <p className="stock-empty-title">{toastError ? 'Could not load inventory.' : config.emptyTitle}</p>
                       <p className="stock-empty-hint">{config.emptyHint}</p>
                     </div>
                   </td>
                 </tr>
-              ) : filteredItems.map((item, index) => {
+              ) : items.map((item, index) => {
                 const fill = getStockFill(item)
                 return (
                   <tr key={item.id}>
@@ -599,6 +721,7 @@ export default function StockInventoryPage({ stockType = 'in-stock', onNavigate 
                           className="action-btn action-btn-danger"
                           aria-label={`Delete ${item.name}`}
                           onClick={() => setDeletingItem(item)}
+                          disabled={deletingId === item.id}
                         >
                           <Icon path={paths.delete} />
                         </button>
@@ -619,13 +742,14 @@ export default function StockInventoryPage({ stockType = 'in-stock', onNavigate 
       />
       <StockEditModal
         open={Boolean(editingItem)}
-        onClose={() => setEditingItem(null)}
+        onClose={() => (!saving ? setEditingItem(null) : null)}
         onSubmit={updateItem}
         item={editingItem}
+        saving={saving}
       />
       <DeleteConfirmModal
         open={Boolean(deletingItem)}
-        onClose={() => setDeletingItem(null)}
+        onClose={() => (!deletingId ? setDeletingItem(null) : null)}
         onConfirm={() => deleteItem(deletingItem.id)}
         itemName={deletingItem?.name || ''}
         title="Delete Item"
