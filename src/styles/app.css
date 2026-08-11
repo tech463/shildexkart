@@ -650,6 +650,14 @@
     .vendor-modal-scroll {
       overflow: auto !important;
     }
+    /* Form ko modal ki height inherit karani hai, warna body scroll nahi hota
+       aur footer (submit button) clip ho jata hai. */
+    .vendor-modal > form {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      flex-direction: column;
+    }
     .vendor-modal-wide {
       max-width: 58rem;
     }
@@ -1729,6 +1737,7 @@
     }
     .vendor-modal-body {
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
       padding: 1.25rem 1.75rem;
       scrollbar-width: thin;

@@ -1,6 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
-import { COUPONS_DATA, DISCOUNT_TYPES } from '../data/coupons'
+import { DISCOUNT_TYPES } from '../data/coupons'
+import {
+  createCoupon,
+  deleteCoupon as deleteCouponThunk,
+  fetchCoupons,
+  updateCoupon,
+} from '../store/slices/couponSlice'
 
 function Icon({ path, className = 'h-4 w-4' }) {
   return (
@@ -94,7 +101,45 @@ function usagePercent(usage, usageLimit) {
   return Math.min(100, Math.round((Number(usage) / limit) * 100))
 }
 
-function CouponModal({ open, onClose, onSubmit, coupon = null }) {
+const AMOUNT_TYPE_LABELS = { percent: 'Percent', fixed: 'Fixed', shipping: 'Shipping' }
+
+function toISODate(value) {
+  if (!value) return ''
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10)
+}
+
+/** API row (name / amount / amount_type / is_active) → table row shape. */
+function normalizeCouponRows(items = []) {
+  return items.map((item, index) => {
+    const amountType = String(item?.amount_type ?? 'percent').toLowerCase()
+    const discountType = AMOUNT_TYPE_LABELS[amountType] || 'Percent'
+    const discountValue = Number(item?.amount ?? 0)
+    const active = Boolean(item?.is_active)
+
+    return {
+      id: item?.id ?? index,
+      code: item?.name ?? '',
+      description: item?.description ?? '—',
+      discountType,
+      discountValue,
+      discountLabel: buildDiscountLabel(discountType, discountValue),
+      unlimited: true,
+      startDate: '',
+      endDate: '',
+      expiryDays: null,
+      expiryLabel: 'Unlimited',
+      status: active ? 'Active' : 'Inactive',
+      usage: 0,
+      usageLimit: 0,
+      minOrder: 0,
+      createdAt: toISODate(item?.created_at),
+      updatedAt: toISODate(item?.updated_at),
+    }
+  })
+}
+
+function CouponModal({ open, onClose, onSubmit, coupon = null, submitting = false }) {
   const isEdit = Boolean(coupon)
   const [form, setForm] = useState(emptyForm)
   const [error, setError] = useState('')
@@ -144,8 +189,8 @@ function CouponModal({ open, onClose, onSubmit, coupon = null }) {
 
   const handleSubmit = (event) => {
     event.preventDefault()
-    if (!form.code.trim() || !form.description.trim()) {
-      setError('Please enter coupon code and description.')
+    if (!form.code.trim()) {
+      setError('Please enter coupon code.')
       return
     }
     const discountValue = form.discountType === 'Shipping' ? 0 : Number(form.discountValue)
@@ -154,8 +199,8 @@ function CouponModal({ open, onClose, onSubmit, coupon = null }) {
       return
     }
     const usage = isEdit ? Number(form.usage) : 0
-    const usageLimit = Number(form.usageLimit)
-    if (!Number.isFinite(usageLimit) || usageLimit <= 0) {
+    const usageLimit = form.usageLimit === '' ? 0 : Number(form.usageLimit)
+    if (form.usageLimit !== '' && (!Number.isFinite(usageLimit) || usageLimit < 0)) {
       setError('Please enter a valid usage limit.')
       return
     }
@@ -381,8 +426,12 @@ function CouponModal({ open, onClose, onSubmit, coupon = null }) {
           </div>
           <div className="vendor-modal-footer">
             <button type="button" onClick={onClose} className="vendor-btn-cancel w-full">Cancel</button>
-            <button type="submit" className="btn-glass vendor-btn-submit coupon-modal-submit w-full !min-w-0">
-              {isEdit ? 'Save Changes' : 'Create Coupon'}
+            <button
+              type="submit"
+              className="btn-glass vendor-btn-submit coupon-modal-submit w-full !min-w-0"
+              disabled={submitting}
+            >
+              {submitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Coupon'}
             </button>
           </div>
         </form>
@@ -475,7 +524,9 @@ function CouponViewModal({ open, onClose, coupon }) {
 }
 
 export default function Coupons({ onNavigate }) {
-  const [coupons, setCoupons] = useState(() => COUPONS_DATA.map((row) => ({ ...row })))
+  const dispatch = useDispatch()
+  const couponState = useSelector((state) => state.coupon)
+
   const [query, setQuery] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -483,6 +534,35 @@ export default function Coupons({ onNavigate }) {
   const [editingCoupon, setEditingCoupon] = useState(null)
   const [viewingCoupon, setViewingCoupon] = useState(null)
   const [deletingCoupon, setDeletingCoupon] = useState(null)
+  const [toastSuccess, setToastSuccess] = useState('')
+  const [toastError, setToastError] = useState('')
+
+  const coupons = useMemo(
+    () => normalizeCouponRows(couponState.rows),
+    [couponState.rows],
+  )
+  const submitting = couponState.creating || couponState.updating
+
+  useEffect(() => {
+    if (!toastSuccess && !toastError) return undefined
+    const timer = setTimeout(() => {
+      setToastSuccess('')
+      setToastError('')
+    }, 3000)
+    return () => clearTimeout(timer)
+  }, [toastSuccess, toastError])
+
+  const loadCoupons = useCallback(async () => {
+    try {
+      await dispatch(fetchCoupons({ page: 1, limit: 10 })).unwrap()
+    } catch (err) {
+      setToastError(typeof err === 'string' ? err : 'Failed to load coupons.')
+    }
+  }, [dispatch])
+
+  useEffect(() => {
+    loadCoupons()
+  }, [loadCoupons])
 
   const filteredCoupons = useMemo(() => {
     const search = query.trim().toLowerCase()
@@ -511,38 +591,43 @@ export default function Coupons({ onNavigate }) {
     setModalOpen(true)
   }
 
-  const deleteCoupon = (id) => {
-    setCoupons((current) => current.filter((row) => row.id !== id))
-    setDeletingCoupon(null)
+  const deleteCoupon = async (id) => {
+    setToastError('')
+    try {
+      const data = await dispatch(deleteCouponThunk(id)).unwrap()
+      setDeletingCoupon(null)
+      setToastSuccess(data?.message || 'Coupon deleted successfully.')
+      await loadCoupons()
+    } catch (err) {
+      setDeletingCoupon(null)
+      setToastError(typeof err === 'string' ? err : 'Coupon delete failed.')
+    }
   }
 
-  const addCoupon = (payload) => {
-    const stamp = todayISO()
-    setCoupons((current) => [
-      {
-        id: Date.now(),
-        ...payload,
-        createdAt: stamp,
-        updatedAt: stamp,
-      },
-      ...current,
-    ])
-    closeModal()
-  }
+  const handleModalSubmit = async (payload) => {
+    // Backend sirf name / amount / amount_type accept karta hai.
+    const apiPayload = {
+      name: payload.code,
+      amount: payload.discountValue,
+      amountType: String(payload.discountType || 'Percent').toLowerCase(),
+    }
 
-  const updateCoupon = (payload) => {
-    const stamp = todayISO()
-    setCoupons((current) => current.map((row) => (
-      row.id === payload.id
-        ? { ...row, ...payload, updatedAt: stamp }
-        : row
-    )))
-    closeModal()
-  }
-
-  const handleModalSubmit = (payload) => {
-    if (editingCoupon) updateCoupon(payload)
-    else addCoupon(payload)
+    setToastError('')
+    try {
+      if (editingCoupon) {
+        // Edit par modal ka "Active status" toggle bhi bhejte hain.
+        const updatePayload = { ...apiPayload, isActive: payload.status === 'Active' }
+        await dispatch(updateCoupon({ id: editingCoupon.id, payload: updatePayload })).unwrap()
+        setToastSuccess('Coupon updated successfully.')
+      } else {
+        await dispatch(createCoupon(apiPayload)).unwrap()
+        setToastSuccess('Coupon created successfully.')
+      }
+      closeModal()
+      await loadCoupons()
+    } catch (err) {
+      setToastError(typeof err === 'string' ? err : 'Coupon save failed.')
+    }
   }
 
   return (
@@ -618,6 +703,9 @@ export default function Coupons({ onNavigate }) {
           </div>
         </div>
 
+        {toastSuccess ? <div className="notif-toast mb-4">{toastSuccess}</div> : null}
+        {toastError ? <div className="vendor-form-error mb-4">{toastError}</div> : null}
+
         <div className="overflow-x-auto">
           <table className="vendors-table data-table coupons-table w-full min-w-[1100px] text-left text-sm">
             <thead>
@@ -634,7 +722,13 @@ export default function Coupons({ onNavigate }) {
               </tr>
             </thead>
             <tbody>
-              {filteredCoupons.length === 0 ? (
+              {couponState.loading ? (
+                <tr>
+                  <td colSpan={9} className="py-10 text-center text-sm text-slate-400">
+                    Loading coupons...
+                  </td>
+                </tr>
+              ) : filteredCoupons.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="py-10 text-center text-sm text-slate-500">
                     No coupons found
@@ -715,6 +809,7 @@ export default function Coupons({ onNavigate }) {
         onClose={closeModal}
         onSubmit={handleModalSubmit}
         coupon={editingCoupon}
+        submitting={submitting}
       />
       <CouponViewModal
         open={Boolean(viewingCoupon)}
