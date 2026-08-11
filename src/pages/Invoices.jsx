@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import {
-  INVOICES_DATA,
-  INVOICE_STATUSES,
-  ORDER_STATUSES,
-  PAYMENT_MODES,
-} from '../data/invoices'
+  deleteInvoiceAPI,
+  errMsg,
+  fetchInvoiceByIdAPI,
+  fetchInvoicesAPI,
+  syncInvoicesAPI,
+  updateInvoiceAPI,
+} from '../services/invoiceService'
+
+const INVOICE_STATUSES = ['Unpaid', 'Paid', 'Partial', 'Cancelled']
 
 function Icon({ path, className = 'h-4 w-4' }) {
   return (
@@ -19,7 +24,6 @@ const paths = {
   search: 'm21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z',
   calendar: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5',
   refresh: 'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182M21.015 12H16.02',
-  plus: 'M12 4.5v15m7.5-7.5h-15',
   close: 'M6 18 18 6M6 6l12 12',
   view: 'M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z',
   viewEye: 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
@@ -28,65 +32,10 @@ const paths = {
   print: 'M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z',
 }
 
-const emptyForm = {
-  invoiceId: '',
-  clientName: '',
-  clientEmail: '',
-  phone: '',
-  totalAmount: '',
-  paymentMode: 'Not available',
-  issuedDate: '',
-  invoiceStatus: 'Unpaid',
-  orderStatus: 'Pending',
-}
-
-function formatTimestamp(date = new Date()) {
-  return date.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  }).replace(',', '')
-}
-
-function formatIssuedDate(date = new Date()) {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
 function formatRupee(amount) {
   const value = Number(amount)
   if (!Number.isFinite(value)) return '₹ 0'
   return `₹ ${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
-}
-
-function parseInvoiceDate(value) {
-  if (!value) return null
-  const match = String(value).match(/^(\d{1,2})-([A-Za-z]+)-(\d{4})/)
-  if (!match) {
-    const fallback = new Date(value)
-    return Number.isNaN(fallback.getTime()) ? null : fallback
-  }
-  const [, day, monthName, year] = match
-  const parsed = new Date(`${monthName} ${day}, ${year} 00:00:00`)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
-}
-
-function isWithinDateRange(row, startDate, endDate) {
-  if (!startDate && !endDate) return true
-  const created = parseInvoiceDate(row.created)
-  const updated = parseInvoiceDate(row.updated)
-  const issued = row.issuedDate ? new Date(row.issuedDate) : null
-  const start = startDate ? new Date(`${startDate}T00:00:00`) : null
-  const end = endDate ? new Date(`${endDate}T23:59:59`) : null
-  const matches = (date) => {
-    if (!date || Number.isNaN(date.getTime())) return false
-    if (start && date < start) return false
-    if (end && date > end) return false
-    return true
-  }
-  return matches(created) || matches(updated) || matches(issued)
 }
 
 function invoiceStatusClass(status) {
@@ -99,214 +48,13 @@ function invoiceStatusClass(status) {
 
 function orderStatusClass(status) {
   const key = String(status || '').toLowerCase()
-  if (key === 'delivered') return 'invoice-order-delivered'
-  if (key === 'processing' || key === 'shipped') return 'invoice-order-processing'
-  if (key === 'cancelled') return 'invoice-order-cancelled'
+  if (key.includes('delivered')) return 'invoice-order-delivered'
+  if (key.includes('processing') || key.includes('shipped') || key.includes('packed')) return 'invoice-order-processing'
+  if (key.includes('cancelled')) return 'invoice-order-cancelled'
   return 'invoice-order-pending'
 }
 
-function InvoiceModal({ open, onClose, onSubmit, invoice = null }) {
-  const isEdit = Boolean(invoice)
-  const [form, setForm] = useState(emptyForm)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    if (!open) return undefined
-    if (invoice) {
-      setForm({
-        invoiceId: invoice.invoiceId || '',
-        clientName: invoice.clientName || '',
-        clientEmail: invoice.clientEmail || '',
-        phone: invoice.phone || '',
-        totalAmount: String(invoice.totalAmount ?? ''),
-        paymentMode: invoice.paymentMode || 'Not available',
-        issuedDate: invoice.issuedDate || '',
-        invoiceStatus: invoice.invoiceStatus || 'Unpaid',
-        orderStatus: invoice.orderStatus || 'Pending',
-      })
-    } else {
-      setForm({ ...emptyForm, issuedDate: formatIssuedDate() })
-    }
-    setError('')
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.body.style.overflow = previousOverflow
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open, onClose, invoice])
-
-  if (!open) return null
-
-  const updateField = (key) => (event) => {
-    setForm((current) => ({ ...current, [key]: event.target.value }))
-  }
-
-  const handleSubmit = (event) => {
-    event.preventDefault()
-    if (!form.clientName.trim() || !form.clientEmail.trim() || !form.phone.trim()) {
-      setError('Please fill in client name, email, and phone.')
-      return
-    }
-    const amount = Number(form.totalAmount)
-    if (!Number.isFinite(amount) || amount < 0) {
-      setError('Please enter a valid total amount.')
-      return
-    }
-    onSubmit({
-      id: invoice?.id,
-      invoiceId: form.invoiceId.trim(),
-      clientName: form.clientName.trim(),
-      clientEmail: form.clientEmail.trim(),
-      phone: form.phone.trim(),
-      totalAmount: amount,
-      paymentMode: form.paymentMode,
-      issuedDate: form.issuedDate.trim() || formatIssuedDate(),
-      invoiceStatus: form.invoiceStatus,
-      orderStatus: form.orderStatus,
-    })
-  }
-
-  const fieldPrefix = isEdit ? 'edit-invoice' : 'add-invoice'
-
-  return (
-    <div className="vendor-modal-overlay" onClick={onClose} role="presentation">
-      <div
-        className="vendor-modal vendor-modal-category glass-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={`${fieldPrefix}-title`}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="vendor-modal-header">
-          <h3 id={`${fieldPrefix}-title`} className="vendor-modal-title">
-            <span className="vendor-modal-title-muted">{isEdit ? 'Edit ' : 'Add '}</span>
-            <span className="vendor-modal-title-accent">Invoice</span>
-          </h3>
-          <button type="button" className="action-btn" aria-label="Close" onClick={onClose}>
-            <Icon path={paths.close} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit}>
-          <div className="vendor-modal-body space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor={`${fieldPrefix}-id`} className="vendor-field-label">Invoice ID</label>
-                <input
-                  id={`${fieldPrefix}-id`}
-                  value={form.invoiceId}
-                  onChange={updateField('invoiceId')}
-                  className="glass-input vendor-field-input"
-                  placeholder="e.g. 5576-992"
-                />
-              </div>
-              <div>
-                <label htmlFor={`${fieldPrefix}-amount`} className="vendor-field-label">Total Amount</label>
-                <input
-                  id={`${fieldPrefix}-amount`}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.totalAmount}
-                  onChange={updateField('totalAmount')}
-                  className="glass-input vendor-field-input"
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <label htmlFor={`${fieldPrefix}-client`} className="vendor-field-label">Client Name</label>
-                <input
-                  id={`${fieldPrefix}-client`}
-                  value={form.clientName}
-                  onChange={updateField('clientName')}
-                  className="glass-input vendor-field-input"
-                  placeholder="Client name"
-                />
-              </div>
-              <div>
-                <label htmlFor={`${fieldPrefix}-email`} className="vendor-field-label">Client Email</label>
-                <input
-                  id={`${fieldPrefix}-email`}
-                  type="email"
-                  value={form.clientEmail}
-                  onChange={updateField('clientEmail')}
-                  className="glass-input vendor-field-input"
-                  placeholder="email@example.com"
-                />
-              </div>
-              <div>
-                <label htmlFor={`${fieldPrefix}-phone`} className="vendor-field-label">Phone</label>
-                <input
-                  id={`${fieldPrefix}-phone`}
-                  value={form.phone}
-                  onChange={updateField('phone')}
-                  className="glass-input vendor-field-input"
-                  placeholder="Phone number"
-                />
-              </div>
-              <div>
-                <label htmlFor={`${fieldPrefix}-mode`} className="vendor-field-label">Payment Mode</label>
-                <select
-                  id={`${fieldPrefix}-mode`}
-                  value={form.paymentMode}
-                  onChange={updateField('paymentMode')}
-                  className="glass-input vendor-field-input"
-                >
-                  {PAYMENT_MODES.map((option) => <option key={option}>{option}</option>)}
-                </select>
-              </div>
-              <div>
-                <label htmlFor={`${fieldPrefix}-issued`} className="vendor-field-label">Issued Date</label>
-                <input
-                  id={`${fieldPrefix}-issued`}
-                  value={form.issuedDate}
-                  onChange={updateField('issuedDate')}
-                  className="glass-input vendor-field-input"
-                  placeholder="Jul 15, 2026"
-                />
-              </div>
-              <div>
-                <label htmlFor={`${fieldPrefix}-inv-status`} className="vendor-field-label">Invoice Status</label>
-                <select
-                  id={`${fieldPrefix}-inv-status`}
-                  value={form.invoiceStatus}
-                  onChange={updateField('invoiceStatus')}
-                  className="glass-input vendor-field-input"
-                >
-                  {INVOICE_STATUSES.map((option) => <option key={option}>{option}</option>)}
-                </select>
-              </div>
-              <div>
-                <label htmlFor={`${fieldPrefix}-order-status`} className="vendor-field-label">Order Status</label>
-                <select
-                  id={`${fieldPrefix}-order-status`}
-                  value={form.orderStatus}
-                  onChange={updateField('orderStatus')}
-                  className="glass-input vendor-field-input"
-                >
-                  {ORDER_STATUSES.map((option) => <option key={option}>{option}</option>)}
-                </select>
-              </div>
-            </div>
-            {error ? <p className="text-xs font-medium text-red-400">{error}</p> : null}
-          </div>
-          <div className="vendor-modal-footer">
-            <button type="button" onClick={onClose} className="vendor-btn-cancel w-full">Cancel</button>
-            <button type="submit" className="btn-glass vendor-btn-submit w-full !min-w-0">
-              {isEdit ? 'Save Changes' : 'Add Invoice'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-function InvoiceViewModal({ open, onClose, invoice }) {
+function InvoiceViewModal({ open, onClose, invoice, onNavigateOrder, onNavigatePayment }) {
   useEffect(() => {
     if (!open) return undefined
     const previousOverflow = document.body.style.overflow
@@ -329,11 +77,10 @@ function InvoiceViewModal({ open, onClose, invoice }) {
         className="vendor-modal vendor-modal-category glass-card"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="view-invoice-title"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="vendor-modal-header">
-          <h3 id="view-invoice-title" className="vendor-modal-title">
+          <h3 className="vendor-modal-title">
             <span className="vendor-modal-title-muted">View </span>
             <span className="vendor-modal-title-accent">Invoice</span>
           </h3>
@@ -348,8 +95,10 @@ function InvoiceViewModal({ open, onClose, invoice }) {
               <p className="text-sm font-semibold text-emerald-400">{invoice.invoiceId}</p>
             </div>
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Total Amount</p>
-              <p className="text-sm text-slate-200">{formatRupee(invoice.totalAmount)}</p>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Order</p>
+              <button type="button" className="text-sm font-semibold text-sky-400 hover:underline" onClick={onNavigateOrder}>
+                {invoice.order_number || `Order #${invoice.order_id}`}
+              </button>
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Client</p>
@@ -362,11 +111,13 @@ function InvoiceViewModal({ open, onClose, invoice }) {
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Payment Mode</p>
-              <p className="text-sm text-slate-200">{invoice.paymentMode}</p>
+              <button type="button" className="text-sm text-sky-400 hover:underline" onClick={onNavigatePayment}>
+                {invoice.paymentMode}
+              </button>
             </div>
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Issued Date</p>
-              <p className="text-sm text-slate-200">{invoice.issuedDate}</p>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Total Amount</p>
+              <p className="text-sm text-slate-200">{formatRupee(invoice.totalAmount)}</p>
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Invoice Status</p>
@@ -380,131 +131,178 @@ function InvoiceViewModal({ open, onClose, invoice }) {
                 {String(invoice.orderStatus).toUpperCase()}
               </span>
             </div>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Created</p>
-              <p className="text-sm text-slate-300">{invoice.created}</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Updated</p>
-              <p className="text-sm text-slate-300">{invoice.updated}</p>
-            </div>
           </div>
+
+          {(invoice.items || []).length ? (
+            <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Line items</p>
+              <div className="space-y-2 text-sm text-slate-300">
+                {invoice.items.map((item) => (
+                  <div key={item.id} className="flex justify-between gap-3">
+                    <span>{item.product_title} ×{item.qty}</span>
+                    <span>{formatRupee(item.line_total)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
-        <div className="vendor-modal-footer">
-          <button type="button" onClick={onClose} className="vendor-btn-cancel w-full">Close</button>
+        <div className="vendor-modal-footer flex flex-wrap gap-2">
+          <button type="button" onClick={onNavigateOrder} className="vendor-btn-cancel flex-1">Open Order</button>
+          <button type="button" onClick={onNavigatePayment} className="vendor-btn-cancel flex-1">Open Payment</button>
+          <button type="button" onClick={onClose} className="vendor-btn-cancel flex-1">Close</button>
         </div>
       </div>
     </div>
   )
 }
 
+function InvoiceEditModal({ open, onClose, invoice, onSubmit, saving }) {
+  const [status, setStatus] = useState('Unpaid')
+  const [notes, setNotes] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!open || !invoice) return
+    setStatus(invoice.invoiceStatus || 'Unpaid')
+    setNotes(invoice.notes || '')
+    setError('')
+  }, [open, invoice])
+
+  if (!open || !invoice) return null
+
+  return (
+    <div className="vendor-modal-overlay" onClick={onClose} role="presentation">
+      <div className="vendor-modal vendor-modal-category glass-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <div className="vendor-modal-header">
+          <h3 className="vendor-modal-title">
+            <span className="vendor-modal-title-muted">Edit </span>
+            <span className="vendor-modal-title-accent">Invoice</span>
+          </h3>
+          <button type="button" className="action-btn" onClick={onClose} aria-label="Close"><Icon path={paths.close} /></button>
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            onSubmit({ status: String(status).toLowerCase(), notes })
+          }}
+        >
+          <div className="vendor-modal-body space-y-4">
+            <p className="text-sm text-slate-400">
+              Invoice <span className="font-semibold text-emerald-400">{invoice.invoiceId}</span> is linked to order{' '}
+              <span className="text-sky-400">{invoice.order_number}</span>. Amounts come from the order.
+            </p>
+            <label className="vendor-field-label">
+              Invoice status
+              <select className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
+                {INVOICE_STATUSES.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </label>
+            <label className="vendor-field-label">
+              Notes
+              <textarea
+                className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+                rows={3}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </label>
+            {error ? <p className="text-sm text-rose-400">{error}</p> : null}
+          </div>
+          <div className="vendor-modal-footer flex gap-2">
+            <button type="button" onClick={onClose} className="vendor-btn-cancel flex-1">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-add flex-1 justify-center !rounded-xl">
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export default function Invoices({ onNavigate }) {
-  const [invoices, setInvoices] = useState(() => INVOICES_DATA.map((row) => ({ ...row })))
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [invoices, setInvoices] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [selectedIds, setSelectedIds] = useState([])
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingInvoice, setEditingInvoice] = useState(null)
   const [viewingInvoice, setViewingInvoice] = useState(null)
+  const [editingInvoice, setEditingInvoice] = useState(null)
   const [deletingInvoice, setDeletingInvoice] = useState(null)
+  const [saving, setSaving] = useState(false)
 
-  const filteredInvoices = useMemo(() => {
-    const search = query.trim().toLowerCase()
-    return invoices.filter((row) => (
-      (!search
-        || row.invoiceId.toLowerCase().includes(search)
-        || row.clientName.toLowerCase().includes(search)
-        || row.clientEmail.toLowerCase().includes(search)
-        || row.phone.toLowerCase().includes(search))
-      && (!statusFilter || row.invoiceStatus === statusFilter)
-      && isWithinDateRange(row, startDate, endDate)
-    ))
-  }, [invoices, query, statusFilter, startDate, endDate])
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetchInvoicesAPI({
+        page: 1,
+        limit: 100,
+        search: query.trim() || undefined,
+        status: statusFilter ? statusFilter.toLowerCase() : undefined,
+        date_from: startDate || undefined,
+        date_to: endDate || undefined,
+      })
+      setInvoices(res?.data || [])
+    } catch (err) {
+      setError(errMsg(err, 'Failed to load invoices.'))
+      setInvoices([])
+    } finally {
+      setLoading(false)
+    }
+  }, [query, statusFilter, startDate, endDate])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  useEffect(() => {
+    const invoiceId = searchParams.get('invoiceId')
+    const orderId = searchParams.get('orderId')
+    if (!invoiceId && !orderId) return
+    ;(async () => {
+      try {
+        if (invoiceId) {
+          const res = await fetchInvoiceByIdAPI(invoiceId)
+          if (res?.data) setViewingInvoice(res.data)
+          return
+        }
+        if (orderId) {
+          const res = await fetchInvoicesAPI({ order_id: orderId, limit: 1 })
+          if (res?.data?.[0]) setViewingInvoice(res.data[0])
+        }
+      } catch (err) {
+        setError(errMsg(err, 'Invoice not found.'))
+      }
+    })()
+  }, [searchParams])
+
+  const filteredInvoices = useMemo(() => invoices, [invoices])
 
   const allVisibleSelected = filteredInvoices.length > 0
     && filteredInvoices.every((row) => selectedIds.includes(row.id))
 
-  const refresh = () => {
-    setQuery('')
-    setStatusFilter('')
-    setStartDate('')
-    setEndDate('')
-    setSelectedIds([])
+  const goOrder = (invoice) => {
+    if (!invoice?.order_id) return
+    navigate(`/orders?orderId=${invoice.order_id}`)
   }
 
-  const closeModal = () => {
-    setModalOpen(false)
-    setEditingInvoice(null)
-  }
-
-  const openAddModal = () => {
-    setEditingInvoice(null)
-    setModalOpen(true)
-  }
-
-  const openEditModal = (invoice) => {
-    setEditingInvoice(invoice)
-    setModalOpen(true)
-  }
-
-  const toggleSelectAll = () => {
-    if (allVisibleSelected) {
-      setSelectedIds((current) => current.filter((id) => !filteredInvoices.some((row) => row.id === id)))
-      return
-    }
-    setSelectedIds((current) => [
-      ...new Set([...current, ...filteredInvoices.map((row) => row.id)]),
-    ])
-  }
-
-  const toggleSelect = (id) => {
-    setSelectedIds((current) => (
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
-    ))
-  }
-
-  const deleteInvoice = (id) => {
-    setInvoices((current) => current.filter((row) => row.id !== id))
-    setSelectedIds((current) => current.filter((value) => value !== id))
-    setDeletingInvoice(null)
-  }
-
-  const addInvoice = (payload) => {
-    const stamp = formatTimestamp()
-    const token = Math.floor(100 + Math.random() * 900)
-    setInvoices((current) => [
-      {
-        id: Date.now(),
-        ...payload,
-        invoiceId: payload.invoiceId || `5576-${token}`,
-        created: stamp,
-        updated: stamp,
-      },
-      ...current,
-    ])
-    closeModal()
-  }
-
-  const updateInvoice = (payload) => {
-    const stamp = formatTimestamp()
-    setInvoices((current) => current.map((row) => (
-      row.id === payload.id
-        ? { ...row, ...payload, invoiceId: payload.invoiceId || row.invoiceId, updated: stamp }
-        : row
-    )))
-    closeModal()
-  }
-
-  const handleModalSubmit = (payload) => {
-    if (editingInvoice) updateInvoice(payload)
-    else addInvoice(payload)
+  const goPayment = (invoice) => {
+    if (!invoice?.order_id) return
+    navigate(`/payments/all?orderId=${invoice.order_id}`)
   }
 
   const printInvoice = (invoice) => {
-    const content = [
+    const lines = [
       `Invoice: ${invoice.invoiceId}`,
+      `Order: ${invoice.order_number || invoice.order_id}`,
       `Client: ${invoice.clientName}`,
       `Email: ${invoice.clientEmail}`,
       `Phone: ${invoice.phone}`,
@@ -513,13 +311,64 @@ export default function Invoices({ onNavigate }) {
       `Issued: ${invoice.issuedDate}`,
       `Invoice Status: ${invoice.invoiceStatus}`,
       `Order Status: ${invoice.orderStatus}`,
-    ].join('\n')
+    ]
+    if ((invoice.items || []).length) {
+      lines.push('', 'Items:')
+      invoice.items.forEach((item) => {
+        lines.push(`- ${item.product_title} x${item.qty} = ${formatRupee(item.line_total)}`)
+      })
+    }
     const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=720,height=640')
     if (!printWindow) return
-    printWindow.document.write(`<pre style="font:14px/1.5 ui-sans-serif,system-ui">${content}</pre>`)
+    printWindow.document.write(`<pre style="font:14px/1.5 ui-sans-serif,system-ui">${lines.join('\n')}</pre>`)
     printWindow.document.close()
     printWindow.focus()
     printWindow.print()
+  }
+
+  const handleSync = async () => {
+    setSaving(true)
+    setMessage('')
+    try {
+      const res = await syncInvoicesAPI()
+      setMessage(res.message || 'Invoices synced from orders.')
+      await load()
+    } catch (err) {
+      setError(errMsg(err, 'Sync failed.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleUpdate = async (payload) => {
+    if (!editingInvoice) return
+    setSaving(true)
+    try {
+      const res = await updateInvoiceAPI(editingInvoice.id, payload)
+      setMessage(res.message || 'Invoice updated.')
+      setEditingInvoice(null)
+      await load()
+    } catch (err) {
+      setError(errMsg(err, 'Update failed.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingInvoice) return
+    setSaving(true)
+    try {
+      await deleteInvoiceAPI(deletingInvoice.id)
+      setMessage('Invoice deleted.')
+      setDeletingInvoice(null)
+      setSelectedIds((ids) => ids.filter((id) => id !== deletingInvoice.id))
+      await load()
+    } catch (err) {
+      setError(errMsg(err, 'Delete failed.'))
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -541,11 +390,17 @@ export default function Invoices({ onNavigate }) {
         </nav>
       </div>
 
+      {error ? <div className="mb-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">{error}</div> : null}
+      {message ? <div className="mb-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">{message}</div> : null}
+
       <div className="neo-card glass-card p-5" style={{ '--accent': '#c084fc' }}>
         <span className="card-accent" aria-hidden="true" />
 
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <h3 className="font-display text-sm font-bold tracking-wide text-shield">Invoices List</h3>
+          <div>
+            <h3 className="font-display text-sm font-bold tracking-wide text-shield">Invoices List</h3>
+            <p className="mt-1 text-xs text-slate-500">Auto-linked to Orders and Payments. Sync keeps invoices up to date.</p>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <span className="icon-3d icon-3d-xs icon-3d-muted icon-3d-flat icon-3d-input">
@@ -568,50 +423,27 @@ export default function Invoices({ onNavigate }) {
               <option value="">Status</option>
               {INVOICE_STATUSES.map((option) => <option key={option} value={option}>{option}</option>)}
             </select>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
-                <span className="icon-3d icon-3d-xs icon-3d-muted icon-3d-flat icon-3d-input">
-                  <Icon path={paths.calendar} />
-                </span>
-                <input
-                  type="date"
-                  value={startDate}
-                  max={endDate || undefined}
-                  onChange={(event) => setStartDate(event.target.value)}
-                  className="glass-input date-filter-input w-full rounded-xl py-2 pl-11 pr-3 text-sm sm:w-40"
-                  aria-label="Start date"
-                />
-              </div>
-              <span className="text-xs text-slate-500">→</span>
-              <div className="relative">
-                <span className="icon-3d icon-3d-xs icon-3d-muted icon-3d-flat icon-3d-input">
-                  <Icon path={paths.calendar} />
-                </span>
-                <input
-                  type="date"
-                  value={endDate}
-                  min={startDate || undefined}
-                  onChange={(event) => setEndDate(event.target.value)}
-                  className="glass-input date-filter-input w-full rounded-xl py-2 pl-11 pr-3 text-sm sm:w-40"
-                  aria-label="End date"
-                />
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={refresh}
-              className="btn-glass flex h-10 w-10 items-center justify-center rounded-xl"
-              aria-label="Refresh"
-            >
+            <input
+              type="date"
+              value={startDate}
+              max={endDate || undefined}
+              onChange={(event) => setStartDate(event.target.value)}
+              className="glass-input date-filter-input rounded-xl px-3 py-2 text-sm sm:w-40"
+              aria-label="Start date"
+            />
+            <input
+              type="date"
+              value={endDate}
+              min={startDate || undefined}
+              onChange={(event) => setEndDate(event.target.value)}
+              className="glass-input date-filter-input rounded-xl px-3 py-2 text-sm sm:w-40"
+              aria-label="End date"
+            />
+            <button type="button" onClick={load} className="btn-glass flex h-10 w-10 items-center justify-center rounded-xl" aria-label="Refresh">
               <Icon path={paths.refresh} />
             </button>
-            <button
-              type="button"
-              className="btn-add"
-              aria-label="Add invoice"
-              onClick={openAddModal}
-            >
-              <Icon path={paths.plus} className="h-5 w-5" />
+            <button type="button" disabled={saving} onClick={handleSync} className="btn-add !px-3 text-xs font-bold">
+              Sync from Orders
             </button>
           </div>
         </div>
@@ -624,12 +456,19 @@ export default function Invoices({ onNavigate }) {
                   <input
                     type="checkbox"
                     checked={allVisibleSelected}
-                    onChange={toggleSelectAll}
+                    onChange={() => {
+                      if (allVisibleSelected) {
+                        setSelectedIds((current) => current.filter((id) => !filteredInvoices.some((row) => row.id === id)))
+                        return
+                      }
+                      setSelectedIds((current) => [...new Set([...current, ...filteredInvoices.map((row) => row.id)])])
+                    }}
                     aria-label="Select all invoices"
                   />
                 </th>
                 <th>S.No</th>
                 <th>Invoice ID</th>
+                <th>Order</th>
                 <th>Client</th>
                 <th>Phone</th>
                 <th>Total Amount</th>
@@ -642,10 +481,12 @@ export default function Invoices({ onNavigate }) {
               </tr>
             </thead>
             <tbody>
-              {filteredInvoices.length === 0 ? (
+              {loading ? (
+                <tr><td colSpan={13} className="py-10 text-center text-sm text-slate-500">Loading invoices...</td></tr>
+              ) : filteredInvoices.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="py-10 text-center text-sm text-slate-500">
-                    No invoices found
+                  <td colSpan={13} className="py-10 text-center text-sm text-slate-500">
+                    No invoices yet. Place an order or click Sync from Orders.
                   </td>
                 </tr>
               ) : filteredInvoices.map((row, index) => (
@@ -654,19 +495,41 @@ export default function Invoices({ onNavigate }) {
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(row.id)}
-                      onChange={() => toggleSelect(row.id)}
+                      onChange={() => setSelectedIds((current) => (
+                        current.includes(row.id) ? current.filter((value) => value !== row.id) : [...current, row.id]
+                      ))}
                       aria-label={`Select ${row.invoiceId}`}
                     />
                   </td>
                   <td className="whitespace-nowrap text-slate-400">{index + 1}</td>
-                  <td className="whitespace-nowrap font-semibold text-emerald-400">{row.invoiceId}</td>
+                  <td className="whitespace-nowrap">
+                    <button
+                      type="button"
+                      className="font-semibold text-emerald-400 hover:underline"
+                      onClick={() => {
+                        setViewingInvoice(row)
+                        setSearchParams({ invoiceId: String(row.id) })
+                      }}
+                    >
+                      {row.invoiceId}
+                    </button>
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <Link to={`/orders?orderId=${row.order_id}`} className="font-semibold text-sky-400 hover:underline">
+                      {row.order_number || `#${row.order_id}`}
+                    </Link>
+                  </td>
                   <td className="min-w-[180px]">
                     <p className="font-medium text-slate-200">{row.clientName}</p>
                     <p className="text-xs uppercase text-slate-500">{row.clientEmail}</p>
                   </td>
                   <td className="whitespace-nowrap text-slate-300">{row.phone}</td>
                   <td className="whitespace-nowrap font-medium text-slate-200">{formatRupee(row.totalAmount)}</td>
-                  <td className="whitespace-nowrap text-slate-400">{row.paymentMode}</td>
+                  <td className="whitespace-nowrap">
+                    <Link to={`/payments/all?orderId=${row.order_id}`} className="text-slate-300 hover:text-sky-400 hover:underline">
+                      {row.paymentMode}
+                    </Link>
+                  </td>
                   <td className="whitespace-nowrap text-slate-300">{row.issuedDate}</td>
                   <td className="whitespace-nowrap">
                     <span className={`invoice-status-pill ${invoiceStatusClass(row.invoiceStatus)}`}>
@@ -674,9 +537,9 @@ export default function Invoices({ onNavigate }) {
                     </span>
                   </td>
                   <td className="whitespace-nowrap">
-                    <span className={`invoice-status-pill ${orderStatusClass(row.orderStatus)}`}>
+                    <Link to={`/orders?orderId=${row.order_id}`} className={`invoice-status-pill ${orderStatusClass(row.orderStatus)}`}>
                       {String(row.orderStatus).toUpperCase()}
-                    </span>
+                    </Link>
                   </td>
                   <td className="min-w-[220px]">
                     <div className="space-y-1 text-xs text-slate-400">
@@ -686,39 +549,19 @@ export default function Invoices({ onNavigate }) {
                   </td>
                   <td className="min-w-[160px]">
                     <div className="flex items-center gap-1.5 whitespace-nowrap">
-                      <button
-                        type="button"
-                        className="action-btn"
-                        aria-label={`View ${row.invoiceId}`}
-                        onClick={() => setViewingInvoice(row)}
-                      >
+                      <button type="button" className="action-btn" aria-label={`View ${row.invoiceId}`} onClick={() => setViewingInvoice(row)}>
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                           <path strokeLinecap="round" strokeLinejoin="round" d={paths.view} />
                           <path strokeLinecap="round" strokeLinejoin="round" d={paths.viewEye} />
                         </svg>
                       </button>
-                      <button
-                        type="button"
-                        className="action-btn"
-                        aria-label={`Print ${row.invoiceId}`}
-                        onClick={() => printInvoice(row)}
-                      >
+                      <button type="button" className="action-btn" aria-label={`Print ${row.invoiceId}`} onClick={() => printInvoice(row)}>
                         <Icon path={paths.print} />
                       </button>
-                      <button
-                        type="button"
-                        className="action-btn"
-                        aria-label={`Edit ${row.invoiceId}`}
-                        onClick={() => openEditModal(row)}
-                      >
+                      <button type="button" className="action-btn" aria-label={`Edit ${row.invoiceId}`} onClick={() => setEditingInvoice(row)}>
                         <Icon path={paths.edit} />
                       </button>
-                      <button
-                        type="button"
-                        className="action-btn action-btn-danger"
-                        aria-label={`Delete ${row.invoiceId}`}
-                        onClick={() => setDeletingInvoice(row)}
-                      >
+                      <button type="button" className="action-btn action-btn-danger" aria-label={`Delete ${row.invoiceId}`} onClick={() => setDeletingInvoice(row)}>
                         <Icon path={paths.delete} />
                       </button>
                     </div>
@@ -730,23 +573,32 @@ export default function Invoices({ onNavigate }) {
         </div>
       </div>
 
-      <InvoiceModal
-        open={modalOpen}
-        onClose={closeModal}
-        onSubmit={handleModalSubmit}
-        invoice={editingInvoice}
-      />
       <InvoiceViewModal
         open={Boolean(viewingInvoice)}
-        onClose={() => setViewingInvoice(null)}
+        onClose={() => {
+          setViewingInvoice(null)
+          if (searchParams.get('invoiceId')) {
+            searchParams.delete('invoiceId')
+            setSearchParams(searchParams)
+          }
+        }}
         invoice={viewingInvoice}
+        onNavigateOrder={() => goOrder(viewingInvoice)}
+        onNavigatePayment={() => goPayment(viewingInvoice)}
+      />
+      <InvoiceEditModal
+        open={Boolean(editingInvoice)}
+        onClose={() => setEditingInvoice(null)}
+        invoice={editingInvoice}
+        onSubmit={handleUpdate}
+        saving={saving}
       />
       <DeleteConfirmModal
         open={Boolean(deletingInvoice)}
         onClose={() => setDeletingInvoice(null)}
-        onConfirm={() => deleteInvoice(deletingInvoice.id)}
+        onConfirm={handleDelete}
         itemName={deletingInvoice ? `${deletingInvoice.invoiceId} (${deletingInvoice.clientName})` : ''}
-        title="Delete Item"
+        title="Delete Invoice"
       />
     </section>
   )

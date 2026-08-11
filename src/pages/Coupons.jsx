@@ -109,30 +109,43 @@ function toISODate(value) {
   return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10)
 }
 
-/** API row (name / amount / amount_type / is_active) → table row shape. */
+/** API row → table row shape. */
 function normalizeCouponRows(items = []) {
   return items.map((item, index) => {
     const amountType = String(item?.amount_type ?? 'percent').toLowerCase()
     const discountType = AMOUNT_TYPE_LABELS[amountType] || 'Percent'
     const discountValue = Number(item?.amount ?? 0)
     const active = Boolean(item?.is_active)
+    const unlimited = Boolean(item?.is_unlimited)
+    const endDate = toISODate(item?.end_date)
+    const startDate = toISODate(item?.start_date)
+    const status = !active
+      ? 'Inactive'
+      : (!unlimited && endDate && daysUntil(endDate) != null && daysUntil(endDate) <= 0)
+        ? 'Expired'
+        : 'Active'
 
     return {
       id: item?.id ?? index,
-      code: item?.name ?? '',
-      description: item?.description ?? '—',
+      code: item?.name ?? item?.code ?? '',
+      description: item?.description || '',
       discountType,
       discountValue,
       discountLabel: buildDiscountLabel(discountType, discountValue),
-      unlimited: true,
-      startDate: '',
-      endDate: '',
-      expiryDays: null,
-      expiryLabel: 'Unlimited',
-      status: active ? 'Active' : 'Inactive',
-      usage: 0,
-      usageLimit: 0,
-      minOrder: 0,
+      unlimited,
+      startDate,
+      endDate,
+      expiryDays: unlimited ? null : daysUntil(endDate),
+      expiryLabel: buildExpiryLabel({
+        unlimited,
+        status,
+        expiryDays: unlimited ? null : daysUntil(endDate),
+        endDate: unlimited ? '' : endDate,
+      }),
+      status,
+      usage: Number(item?.usage_count ?? 0),
+      usageLimit: Number(item?.usage_limit ?? 0),
+      minOrder: Number(item?.min_order ?? 0),
       createdAt: toISODate(item?.created_at),
       updatedAt: toISODate(item?.updated_at),
     }
@@ -487,7 +500,7 @@ function CouponViewModal({ open, onClose, coupon }) {
             </div>
             <div className="sm:col-span-2">
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Description</p>
-              <p className="text-sm text-slate-200">{coupon.description}</p>
+              <p className="text-sm text-slate-200">{coupon.description || '—'}</p>
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Expiry</p>
@@ -554,7 +567,7 @@ export default function Coupons({ onNavigate }) {
 
   const loadCoupons = useCallback(async () => {
     try {
-      await dispatch(fetchCoupons({ page: 1, limit: 10 })).unwrap()
+      await dispatch(fetchCoupons({ page: 1, limit: 100 })).unwrap()
     } catch (err) {
       setToastError(typeof err === 'string' ? err : 'Failed to load coupons.')
     }
@@ -605,19 +618,26 @@ export default function Coupons({ onNavigate }) {
   }
 
   const handleModalSubmit = async (payload) => {
-    // Backend sirf name / amount / amount_type accept karta hai.
     const apiPayload = {
       name: payload.code,
+      code: payload.code,
+      description: payload.description,
+      discountType: payload.discountType,
       amount: payload.discountValue,
-      amountType: String(payload.discountType || 'Percent').toLowerCase(),
+      discountValue: payload.discountValue,
+      unlimited: payload.unlimited,
+      startDate: payload.startDate,
+      endDate: payload.endDate,
+      usageLimit: payload.usageLimit,
+      minOrder: payload.minOrder,
+      status: payload.status,
+      isActive: payload.status === 'Active',
     }
 
     setToastError('')
     try {
       if (editingCoupon) {
-        // Edit par modal ka "Active status" toggle bhi bhejte hain.
-        const updatePayload = { ...apiPayload, isActive: payload.status === 'Active' }
-        await dispatch(updateCoupon({ id: editingCoupon.id, payload: updatePayload })).unwrap()
+        await dispatch(updateCoupon({ id: editingCoupon.id, payload: apiPayload })).unwrap()
         setToastSuccess('Coupon updated successfully.')
       } else {
         await dispatch(createCoupon(apiPayload)).unwrap()
@@ -742,7 +762,7 @@ export default function Coupons({ onNavigate }) {
                     <td>
                       <span className="coupon-code-badge">{row.code}</span>
                     </td>
-                    <td className="text-slate-300">{row.description}</td>
+                    <td className="text-slate-300">{row.description || '—'}</td>
                     <td className="font-semibold text-slate-100">{row.discountLabel}</td>
                     <td>
                       <span className={`coupon-expiry ${expired ? 'is-expired' : 'is-active'}`}>

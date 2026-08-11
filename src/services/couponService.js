@@ -7,8 +7,16 @@ import api from '../api/axios'
 // POST   /api/v1/coupons/:id/update    body: { name, amount, amount_type }
 // DELETE /api/v1/coupons/:id           → { success, message }
 
-export const fetchCouponsAPI = async ({ page = 1, limit = 10 } = {}) => {
-  const response = await api.get(`/v1/coupons/list?page=${page}&limit=${limit}`)
+export const fetchCouponsAPI = async ({ page = 1, limit = 50, search = '', date_from = '', date_to = '' } = {}) => {
+  const response = await api.get('/v1/coupons/list', {
+    params: {
+      page,
+      limit,
+      ...(search ? { search } : {}),
+      ...(date_from ? { date_from } : {}),
+      ...(date_to ? { date_to } : {}),
+    },
+  })
   return response.data
 }
 

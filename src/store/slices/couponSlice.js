@@ -19,32 +19,51 @@ const toErrorMessage = (error) => {
 }
 
 const buildCouponBody = (payload = {}) => {
-  const name = String(payload.name ?? '').trim()
-  const amountRaw = payload.amount
-  const amountType = String(payload.amountType ?? payload.amount_type ?? 'percent').trim()
+  const name = String(payload.name ?? payload.code ?? '').trim().toUpperCase()
+  if (!name) return { error: 'Please enter coupon code.' }
 
-  if (!name) return { error: 'Please enter coupon name.' }
-  if (amountRaw === '' || amountRaw === null || amountRaw === undefined) {
-    return { error: 'Please enter amount.' }
+  const discountType = String(payload.discountType || payload.amountType || payload.amount_type || 'Percent')
+  const amountTypeMap = {
+    Percent: 'percent',
+    Fixed: 'fixed',
+    Shipping: 'shipping',
+    percent: 'percent',
+    fixed: 'fixed',
+    shipping: 'shipping',
+  }
+  const amount_type = amountTypeMap[discountType] || 'percent'
+
+  let amount = Number(payload.amount ?? payload.discountValue ?? 0)
+  if (amount_type === 'shipping') amount = 0
+  else if (!Number.isFinite(amount) || amount <= 0) {
+    return { error: 'Please enter a valid discount amount.' }
   }
 
-  const amount = Number(amountRaw)
-  if (Number.isNaN(amount)) return { error: 'Amount must be a number.' }
-  if (!amountType) return { error: 'Please select amount type.' }
-
-  const body = { name, amount, amount_type: amountType }
+  const unlimited = Boolean(payload.unlimited ?? payload.isUnlimited ?? payload.is_unlimited)
+  const body = {
+    name,
+    description: String(payload.description || '').trim(),
+    amount,
+    amount_type,
+    min_order: Number(payload.minOrder ?? payload.min_order ?? 0) || 0,
+    is_unlimited: unlimited,
+    start_date: payload.startDate || payload.start_date || null,
+    end_date: unlimited ? null : (payload.endDate || payload.end_date || null),
+    usage_limit: Number(payload.usageLimit ?? payload.usage_limit ?? 0) || 0,
+  }
 
   const isActive = payload.isActive ?? payload.is_active
   if (isActive !== undefined) body.is_active = Boolean(isActive)
+  if (payload.status !== undefined) body.is_active = String(payload.status).toLowerCase() === 'active'
 
   return { body }
 }
 
 export const fetchCoupons = createAsyncThunk(
   'coupon/fetchAll',
-  async ({ page = 1, limit = 10 } = {}, { rejectWithValue }) => {
+  async ({ page = 1, limit = 50, search = '', date_from = '', date_to = '' } = {}, { rejectWithValue }) => {
     try {
-      const data = await fetchCouponsAPI({ page, limit })
+      const data = await fetchCouponsAPI({ page, limit, search, date_from, date_to })
       return {
         rows: data?.data ?? [],
         totalRecords: data?.totalRecords ?? 0,
