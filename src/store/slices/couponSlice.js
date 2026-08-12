@@ -52,6 +52,13 @@ const buildCouponBody = (payload = {}) => {
     usage_limit: Number(payload.usageLimit ?? payload.usage_limit ?? 0) || 0,
   }
 
+  if (payload.usage !== undefined || payload.usage_count !== undefined || payload.usageCount !== undefined) {
+    const usageCount = Number(payload.usage ?? payload.usage_count ?? payload.usageCount)
+    if (Number.isFinite(usageCount) && usageCount >= 0) {
+      body.usage_count = Math.floor(usageCount)
+    }
+  }
+
   const isActive = payload.isActive ?? payload.is_active
   if (isActive !== undefined) body.is_active = Boolean(isActive)
   if (payload.status !== undefined) body.is_active = String(payload.status).toLowerCase() === 'active'
