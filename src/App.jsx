@@ -180,11 +180,15 @@ function NotFoundPage() {
   const onNavigate = useAppNavigate()
   return (
     <section className="page-view">
-      <div className="neo-card glass-card p-8">
-        <p className="mb-4 text-sm text-slate-400">Page not found.</p>
+      <div className="neo-card glass-card mx-auto max-w-xl p-10 text-center">
+        <p className="text-xs font-bold uppercase tracking-[0.24em] text-brand-400">404</p>
+        <h1 className="mt-3 text-3xl font-black text-white">Page not found</h1>
+        <p className="mt-3 text-sm text-slate-400">
+          This admin route does not exist or is no longer available.
+        </p>
         <button
           type="button"
-          className="text-sm font-semibold text-brand-400 hover:underline"
+          className="mt-6 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-400"
           onClick={() => onNavigate('dashboard')}
         >
           Back to Dashboard

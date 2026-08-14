@@ -1,3 +1,5 @@
+import { API_ORIGIN } from "../config/env";
+
 export const BANNER_POSITIONS = [
   { label: "Home Tier 1 — Hero Slider", value: "HOME_SLIDER" },
   { label: "Home Tier 2 — Featured Banner", value: "HOME_TOP" },
@@ -33,11 +35,14 @@ export function positionValue(labelOrValue) {
   return legacyMap[raw] || raw || "HOME_SLIDER";
 }
 
-const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/api\/v1\/?$/, "") || "http://localhost:5001";
-
 export function buildBannerImageUrl(image) {
   if (!image) return "";
-  if (String(image).startsWith("http")) return image;
-  const filename = String(image).replace(/^.*[/\\]/, "");
-  return `${API_BASE}/uploads/banners/${filename}`;
+  const raw = String(image).trim();
+  if (!raw) return "";
+  if (/^(https?:|blob:|data:)/i.test(raw)) return raw;
+
+  const filename = raw.replace(/^.*[/\\]/, "").replace(/^\//, "");
+  if (!filename) return "";
+  if (filename.startsWith("uploads/")) return `${API_ORIGIN}/${filename}`;
+  return `${API_ORIGIN}/uploads/banners/${filename}`;
 }

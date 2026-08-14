@@ -392,7 +392,7 @@ export default function CMS({ onNavigate }) {
   const [cms, setCms] = useState([])
   const [loadingCms, setLoadingCms] = useState(false)
   const [query, setQuery] = useState('')
-  const [status, setStatus] = useState('Active') // UI label
+  const [status, setStatus] = useState('') // '' = all
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalMode, setModalMode] = useState('create') // create | edit | view
@@ -437,8 +437,9 @@ export default function CMS({ onNavigate }) {
     setLoadingCms(true)
     setToastError('')
     try {
-      const statusBool = statusLabel === 'Inactive' ? false : true
-      const data = await fetchCMSListAPI({ page: 1, limit: 10, search, status: statusBool })
+      const statusFilter =
+        statusLabel === 'Active' ? true : statusLabel === 'Inactive' ? false : undefined
+      const data = await fetchCMSListAPI({ page: 1, limit: 100, search, status: statusFilter })
       const list = data?.data ?? data?.cms ?? data?.items ?? []
       setCms(normalizeCms(list))
     } catch (err) {
@@ -450,7 +451,7 @@ export default function CMS({ onNavigate }) {
   }
 
   useEffect(() => {
-    loadCMS({ search: '', statusLabel: 'Active' })
+    loadCMS({ search: '', statusLabel: '' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -507,8 +508,12 @@ export default function CMS({ onNavigate }) {
 
     try {
       const res = await setCMSStatusAPI(id, newActive)
+      setCms((prev) => prev.map((item) => (
+        item.id === id
+          ? { ...item, active: newActive, updated: formatTimestamp(new Date()) }
+          : item
+      )))
       setToastSuccess(res?.message || (newActive ? 'CMS activated.' : 'CMS deactivated.'))
-      await loadCMS({ search: query, statusLabel: status })
     } catch (err) {
       const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'CMS status update failed.'
       setToastError(msg)
@@ -572,11 +577,16 @@ export default function CMS({ onNavigate }) {
 
             <select
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value
+                setStatus(next)
+                loadCMS({ search: query, statusLabel: next })
+              }}
               className="glass-input rounded-xl px-3 py-2 text-sm"
             >
-              <option>Active</option>
-              <option>Inactive</option>
+              <option value="">All</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
             </select>
 
             <button
@@ -647,7 +657,7 @@ export default function CMS({ onNavigate }) {
                           />
                           <span className="toggle-slider" />
                         </label>
-                        <span className={`text-xs font-semibold ${item.active ? 'text-emerald-400' : 'text-slate-500'}`}>
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${item.active ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-300'}`}>
                           {item.active ? 'Active' : 'Inactive'}
                         </span>
                       </div>

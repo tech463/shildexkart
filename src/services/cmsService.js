@@ -4,10 +4,16 @@ import api from '../api/axios'
 // GET  /api/v1/cms/list?page=1&limit=10&search=&status=true
 // POST /api/v1/cms/create (form-data)
 
-export const fetchCMSListAPI = async ({ page = 1, limit = 10, search = '', status = true } = {}) => {
-  const response = await api.get(
-    `/v1/cms/list?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&status=${status}`,
-  )
+export const fetchCMSListAPI = async ({ page = 1, limit = 10, search = '', status } = {}) => {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    search: search || '',
+  })
+  if (status === true || status === false) {
+    params.set('status', String(status))
+  }
+  const response = await api.get(`/v1/cms/list?${params.toString()}`)
   return response.data
 }
 

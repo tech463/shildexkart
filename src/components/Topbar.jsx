@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { BellIcon, ChevronIcon, MenuIcon, RefreshIcon } from './Icons'
 import { fetchInboxAPI, markInboxReadAPI } from '../services/notificationService'
 import { io } from 'socket.io-client'
+import { SOCKET_URL } from '../config/env'
 
 const AUTH_STORAGE_KEY = 'shieldx-admin-auth'
-const SOCKET_URL = 'http://localhost:5001'
 
 function relativeTime(value) {
   if (!value) return ''

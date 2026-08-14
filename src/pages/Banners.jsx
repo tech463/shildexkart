@@ -72,6 +72,22 @@ function mapApiBanner(item, index = 0) {
   }
 }
 
+function BannerThumb({ src, alt }) {
+  const [failed, setFailed] = useState(false)
+  if (!src || failed) {
+    return (
+      <div className="banner-thumb">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">No image</span>
+      </div>
+    )
+  }
+  return (
+    <div className="banner-thumb">
+      <img src={src} alt={alt} onError={() => setFailed(true)} />
+    </div>
+  )
+}
+
 function parseBannerDate(value) {
   if (!value) return null
   const match = String(value).match(/^(\d{1,2})-([A-Za-z]+)-(\d{4})/)
@@ -100,8 +116,11 @@ function isWithinDateRange(banner, startDate, endDate) {
 }
 
 function BannerViewModal({ open, onClose, banner }) {
+  const [imageFailed, setImageFailed] = useState(false)
+
   useEffect(() => {
     if (!open) return undefined
+    setImageFailed(false)
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKeyDown = (event) => {
@@ -112,7 +131,7 @@ function BannerViewModal({ open, onClose, banner }) {
       document.body.style.overflow = previousOverflow
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open, onClose])
+  }, [open, onClose, banner?.id])
 
   if (!open || !banner) return null
 
@@ -136,8 +155,13 @@ function BannerViewModal({ open, onClose, banner }) {
         </div>
         <div className="vendor-modal-body space-y-4">
           <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0b1220]">
-            {banner.imageUrl ? (
-              <img src={banner.imageUrl} alt={banner.title || banner.positionLabel} className="max-h-56 w-full object-cover" />
+            {banner.imageUrl && !imageFailed ? (
+              <img
+                src={banner.imageUrl}
+                alt={banner.title || banner.positionLabel}
+                className="max-h-56 w-full object-cover"
+                onError={() => setImageFailed(true)}
+              />
             ) : (
               <div className="flex h-40 items-center justify-center text-sm text-slate-500">No image</div>
             )}
@@ -785,13 +809,7 @@ export default function Banners({ onNavigate }) {
                   <td><input type="checkbox" className="rounded border-white/20 bg-white/5" /></td>
                   <td className="text-slate-400">{index + 1}</td>
                   <td>
-                    <div className="banner-thumb">
-                      {banner.imageUrl ? (
-                        <img src={banner.imageUrl} alt={banner.title || banner.positionLabel} />
-                      ) : (
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">No image</span>
-                      )}
-                    </div>
+                    <BannerThumb src={banner.imageUrl} alt={banner.title || banner.positionLabel} />
                   </td>
                   <td>
                     <span className="banner-position-badge">{banner.positionLabel}</span>

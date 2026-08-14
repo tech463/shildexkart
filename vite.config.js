@@ -7,5 +7,15 @@ export default defineConfig({
   server: {
     port: 5173,
     open: true,
+    proxy: {
+      '/uploads': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
+      },
+      '/api': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
+      },
+    },
   },
 })
