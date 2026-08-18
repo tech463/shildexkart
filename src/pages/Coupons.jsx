@@ -61,6 +61,15 @@ function buildDiscountLabel(type, value) {
   return `${Number(value) || 0}%`
 }
 
+/** Dynamic description from API value, with a readable fallback from discount rules. */
+function buildDynamicDescription(item, discountType, discountValue) {
+  const saved = String(item?.description ?? item?.desc ?? '').trim()
+  if (saved) return saved
+  if (discountType === 'Shipping') return 'Free shipping on eligible orders'
+  if (discountType === 'Fixed') return `Flat ₹${Number(discountValue) || 0} off`
+  return `${Number(discountValue) || 0}% off your order`
+}
+
 function buildExpiryLabel({ unlimited, status, expiryDays, endDate }) {
   if (unlimited) return 'Unlimited'
   if (status === 'Expired') return 'Expired'
@@ -112,23 +121,27 @@ function toISODate(value) {
 /** API row → table row shape. */
 function normalizeCouponRows(items = []) {
   return items.map((item, index) => {
-    const amountType = String(item?.amount_type ?? 'percent').toLowerCase()
+    const amountType = String(item?.amount_type ?? item?.amountType ?? item?.discount_type ?? 'percent').toLowerCase()
     const discountType = AMOUNT_TYPE_LABELS[amountType] || 'Percent'
-    const discountValue = Number(item?.amount ?? 0)
-    const active = Boolean(item?.is_active)
-    const unlimited = Boolean(item?.is_unlimited)
-    const endDate = toISODate(item?.end_date)
-    const startDate = toISODate(item?.start_date)
-    const status = !active
+    const discountValue = Number(item?.amount ?? item?.discountValue ?? 0)
+    const active = item?.is_active ?? item?.isActive
+    const unlimited = Boolean(item?.is_unlimited ?? item?.isUnlimited ?? item?.unlimited)
+    const endDate = toISODate(item?.end_date ?? item?.endDate)
+    const startDate = toISODate(item?.start_date ?? item?.startDate)
+    const status = active === false || active === 0 || active === '0'
       ? 'Inactive'
       : (!unlimited && endDate && daysUntil(endDate) != null && daysUntil(endDate) <= 0)
         ? 'Expired'
         : 'Active'
+    const usage = Number(item?.usage_count ?? item?.usageCount ?? item?.usage ?? 0)
+    const usageLimit = Number(item?.usage_limit ?? item?.usageLimit ?? 0)
+    const description = buildDynamicDescription(item, discountType, discountValue)
 
     return {
       id: item?.id ?? index,
       code: item?.name ?? item?.code ?? '',
-      description: item?.description || '',
+      description,
+      descriptionRaw: String(item?.description ?? item?.desc ?? '').trim(),
       discountType,
       discountValue,
       discountLabel: buildDiscountLabel(discountType, discountValue),
@@ -143,11 +156,11 @@ function normalizeCouponRows(items = []) {
         endDate: unlimited ? '' : endDate,
       }),
       status,
-      usage: Number(item?.usage_count ?? 0),
-      usageLimit: Number(item?.usage_limit ?? 0),
-      minOrder: Number(item?.min_order ?? 0),
-      createdAt: toISODate(item?.created_at),
-      updatedAt: toISODate(item?.updated_at),
+      usage: Number.isFinite(usage) ? usage : 0,
+      usageLimit: Number.isFinite(usageLimit) ? usageLimit : 0,
+      minOrder: Number(item?.min_order ?? item?.minOrder ?? 0),
+      createdAt: toISODate(item?.created_at ?? item?.createdAt),
+      updatedAt: toISODate(item?.updated_at ?? item?.updatedAt),
     }
   })
 }
@@ -162,7 +175,7 @@ function CouponModal({ open, onClose, onSubmit, coupon = null, submitting = fals
     if (coupon) {
       setForm({
         code: coupon.code || '',
-        description: coupon.description || '',
+        description: coupon.descriptionRaw || coupon.description || '',
         discountType: coupon.discountType || 'Percent',
         discountValue: String(coupon.discountValue ?? ''),
         unlimited: Boolean(coupon.unlimited),
@@ -251,7 +264,7 @@ function CouponModal({ open, onClose, onSubmit, coupon = null, submitting = fals
     onSubmit({
       id: coupon?.id,
       code: form.code.trim().toUpperCase(),
-      description: form.description.trim(),
+      description: form.description.trim() || buildDynamicDescription({}, form.discountType, discountValue),
       discountType: form.discountType,
       discountValue,
       discountLabel: buildDiscountLabel(form.discountType, discountValue),
@@ -500,7 +513,7 @@ function CouponViewModal({ open, onClose, coupon }) {
             </div>
             <div className="sm:col-span-2">
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Description</p>
-              <p className="text-sm text-slate-200">{coupon.description || '—'}</p>
+              <p className="text-sm text-slate-200">{coupon.description}</p>
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Expiry</p>
@@ -516,7 +529,10 @@ function CouponViewModal({ open, onClose, coupon }) {
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Usage</p>
-              <p className="text-sm text-slate-200">{coupon.usage} / {coupon.usageLimit}</p>
+              <p className="text-sm text-slate-200">
+                {coupon.usage}
+                {coupon.usageLimit > 0 ? ` / ${coupon.usageLimit}` : ' / Unlimited'}
+              </p>
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Created</p>
@@ -628,6 +644,7 @@ export default function Coupons({ onNavigate }) {
       unlimited: payload.unlimited,
       startDate: payload.startDate,
       endDate: payload.endDate,
+      usage: payload.usage,
       usageLimit: payload.usageLimit,
       minOrder: payload.minOrder,
       status: payload.status,
@@ -762,7 +779,9 @@ export default function Coupons({ onNavigate }) {
                     <td>
                       <span className="coupon-code-badge">{row.code}</span>
                     </td>
-                    <td className="text-slate-300">{row.description || '—'}</td>
+                    <td className="max-w-[220px] text-slate-300">
+                      <span className="line-clamp-2" title={row.description}>{row.description}</span>
+                    </td>
                     <td className="font-semibold text-slate-100">{row.discountLabel}</td>
                     <td>
                       <span className={`coupon-expiry ${expired ? 'is-expired' : 'is-active'}`}>
@@ -775,12 +794,15 @@ export default function Coupons({ onNavigate }) {
                         {row.status.toUpperCase()}
                       </span>
                     </td>
-                    <td className="min-w-[140px]">
+                    <td className="min-w-[160px]">
                       <div className="flex items-center gap-3">
                         <div className="coupon-usage-track" aria-hidden="true">
                           <div className="coupon-usage-fill" style={{ width: `${percent}%` }} />
                         </div>
-                        <span className="text-xs font-semibold text-slate-300">{row.usage}</span>
+                        <span className="whitespace-nowrap text-xs font-semibold text-slate-300">
+                          {row.usage}
+                          {row.usageLimit > 0 ? ` / ${row.usageLimit}` : ' / ∞'}
+                        </span>
                       </div>
                     </td>
                     <td className="whitespace-nowrap text-slate-400">{row.createdAt}</td>

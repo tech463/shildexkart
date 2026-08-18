@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import { BANNER_POSITIONS } from '../data/banners'
-import { PAGE_CONFIGS } from '../data/pages'
 import {
   createBannerAPI,
   deleteBannerAPI,
@@ -9,6 +8,11 @@ import {
   setBannerStatusAPI,
   updateBannerAPI,
 } from '../services/bannerService'
+import {
+  buildBannerImageUrl,
+  positionLabel,
+  positionValue,
+} from '../utils/bannerUtils'
 
 function Icon({ path, className = 'h-4 w-4' }) {
   return (
@@ -34,24 +38,6 @@ const paths = {
 const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp']
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
-const MAIN_CATEGORY_OPTIONS = [
-  ...new Set([
-    'School Shoes',
-    ...(PAGE_CONFIGS['main-category']?.rows?.map((row) => row.name) || []),
-  ]),
-]
-
-function formatTimestamp(date = new Date()) {
-  return date.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  }).replace(',', '')
-}
-
 function formatApiDate(value) {
   if (!value) return ''
   const d = new Date(value)
@@ -66,12 +52,40 @@ function formatApiDate(value) {
   }).replace(',', '')
 }
 
-function buildImageUrl(image) {
-  if (!image) return ''
-  if (String(image).startsWith('http')) return image
-  // backend image field typically returns filename (based on Postman SS)
-  // Most setups serve uploads from /uploads (without /api).
-  return `http://localhost:5001/uploads/${image}`
+function mapApiBanner(item, index = 0) {
+  const position = positionValue(item?.position || 'HOME_SLIDER')
+  return {
+    id: item?.id ?? index,
+    title: item?.title || '',
+    subtitle: item?.subtitle || item?.text || '',
+    link: item?.link || '/products',
+    buttonText: item?.button_text || item?.buttonText || 'Shop Now',
+    sortOrder: item?.sort_order ?? item?.sortOrder ?? 0,
+    imageUrl: buildBannerImageUrl(item?.image || item?.imageUrl),
+    position,
+    positionLabel: positionLabel(position),
+    created: formatApiDate(item?.created_at || item?.created),
+    updated: formatApiDate(item?.updated_at || item?.updated),
+    active: typeof item?.is_active === 'boolean' ? item.is_active : Boolean(item?.active ?? true),
+    startDate: item?.start_date || item?.startDate || '',
+    endDate: item?.end_date || item?.endDate || '',
+  }
+}
+
+function BannerThumb({ src, alt }) {
+  const [failed, setFailed] = useState(false)
+  if (!src || failed) {
+    return (
+      <div className="banner-thumb">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">No image</span>
+      </div>
+    )
+  }
+  return (
+    <div className="banner-thumb">
+      <img src={src} alt={alt} onError={() => setFailed(true)} />
+    </div>
+  )
 }
 
 function parseBannerDate(value) {
@@ -101,23 +115,12 @@ function isWithinDateRange(banner, startDate, endDate) {
   return matches(created) || matches(updated)
 }
 
-function needsCategoryContext(position) {
-  return position === 'Main Category' || position === 'Category'
-}
-
-function buildCategoryContext(position, mainCategory) {
-  if (!needsCategoryContext(position) || !mainCategory) return 'None'
-  return `Main Category: ${mainCategory}`
-}
-
-function parseMainCategory(categoryContext = '') {
-  const match = String(categoryContext).match(/^Main Category:\s*(.+)$/i)
-  return match?.[1]?.trim() || MAIN_CATEGORY_OPTIONS[0] || ''
-}
-
 function BannerViewModal({ open, onClose, banner }) {
+  const [imageFailed, setImageFailed] = useState(false)
+
   useEffect(() => {
     if (!open) return undefined
+    setImageFailed(false)
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKeyDown = (event) => {
@@ -128,7 +131,7 @@ function BannerViewModal({ open, onClose, banner }) {
       document.body.style.overflow = previousOverflow
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open, onClose])
+  }, [open, onClose, banner?.id])
 
   if (!open || !banner) return null
 
@@ -151,17 +154,30 @@ function BannerViewModal({ open, onClose, banner }) {
           </button>
         </div>
         <div className="vendor-modal-body space-y-4">
-          <div className="product-view-image">
-            {banner.imageUrl ? (
-              <img src={banner.imageUrl} alt={`${banner.position} banner`} />
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0b1220]">
+            {banner.imageUrl && !imageFailed ? (
+              <img
+                src={banner.imageUrl}
+                alt={banner.title || banner.positionLabel}
+                className="max-h-56 w-full object-cover"
+                onError={() => setImageFailed(true)}
+              />
             ) : (
-              <span className="text-sm text-slate-500">No image</span>
+              <div className="flex h-40 items-center justify-center text-sm text-slate-500">No image</div>
             )}
+            <div className="space-y-2 p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Storefront preview</p>
+              <h4 className="text-lg font-bold text-white">{banner.title || 'Banner title'}</h4>
+              {banner.subtitle ? <p className="text-sm text-slate-300">{banner.subtitle}</p> : null}
+              <p className="text-xs text-slate-500">
+                CTA: {banner.buttonText || 'Shop Now'} → {banner.link || '/products'}
+              </p>
+            </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Position</p>
-              <p className="text-sm font-semibold text-slate-200">{banner.position}</p>
+              <p className="text-sm font-semibold text-slate-200">{banner.positionLabel}</p>
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Status</p>
@@ -170,8 +186,20 @@ function BannerViewModal({ open, onClose, banner }) {
               </p>
             </div>
             <div className="sm:col-span-2">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Category Context</p>
-              <p className="text-sm text-slate-300">{banner.categoryContext}</p>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Subtitle</p>
+              <p className="text-sm text-slate-300">{banner.subtitle || '—'}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Link</p>
+              <p className="break-all text-sm text-slate-300">{banner.link || '—'}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Button</p>
+              <p className="text-sm text-slate-300">{banner.buttonText || '—'}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Sort order</p>
+              <p className="text-sm text-slate-300">{banner.sortOrder ?? 0}</p>
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Created</p>
@@ -196,16 +224,17 @@ function BannerModal({
   onClose,
   onSubmit,
   banner = null,
-  positionOptions = null,
   submitting = false,
   apiError = '',
 }) {
   const isEdit = Boolean(banner)
-  const fallbackPosition = (positionOptions && positionOptions.length ? positionOptions[0] : BANNER_POSITIONS[0])
-  const [position, setPosition] = useState(fallbackPosition)
-  const [mainCategory, setMainCategory] = useState(MAIN_CATEGORY_OPTIONS[0] || '')
+  const [position, setPosition] = useState(BANNER_POSITIONS[0].value)
   const [status, setStatus] = useState('Active')
   const [title, setTitle] = useState('')
+  const [subtitle, setSubtitle] = useState('')
+  const [link, setLink] = useState('/products')
+  const [buttonText, setButtonText] = useState('Shop Now')
+  const [sortOrder, setSortOrder] = useState('0')
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState('')
   const [error, setError] = useState('')
@@ -214,17 +243,23 @@ function BannerModal({
     if (!open) return undefined
 
     if (banner) {
-      setPosition(banner.position || fallbackPosition)
-      setMainCategory(parseMainCategory(banner.categoryContext))
+      setPosition(banner.position || BANNER_POSITIONS[0].value)
       setStatus(banner.active ? 'Active' : 'Inactive')
       setTitle(banner.title || '')
+      setSubtitle(banner.subtitle || '')
+      setLink(banner.link || '/products')
+      setButtonText(banner.buttonText || 'Shop Now')
+      setSortOrder(String(banner.sortOrder ?? 0))
       setImageFile(null)
       setImagePreview(banner.imageUrl || '')
     } else {
-      setPosition(fallbackPosition)
-      setMainCategory(MAIN_CATEGORY_OPTIONS[0] || '')
+      setPosition(BANNER_POSITIONS[0].value)
       setStatus('Active')
       setTitle('')
+      setSubtitle('')
+      setLink('/products')
+      setButtonText('Shop Now')
+      setSortOrder('0')
       setImageFile(null)
       setImagePreview('')
     }
@@ -240,7 +275,7 @@ function BannerModal({
       document.body.style.overflow = previousOverflow
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open, onClose, banner, fallbackPosition])
+  }, [open, onClose, banner])
 
   if (!open) return null
 
@@ -276,34 +311,21 @@ function BannerModal({
       setError('Title is required.')
       return
     }
-    if (needsCategoryContext(position) && !mainCategory) {
-      setError('Please select a main category.')
-      return
-    }
 
     onSubmit({
       id: banner?.id,
       position,
       title: String(title).trim(),
-      link: banner?.link || 'https://shieldxcart.com',
-      buttonText: banner?.buttonText || 'Shop Now',
-      text: banner?.text || 'Mega Sale',
-      sortOrder: banner?.sortOrder ?? 0,
-      categoryContext: buildCategoryContext(position, mainCategory),
+      subtitle: String(subtitle).trim(),
+      link: String(link).trim() || '/products',
+      buttonText: String(buttonText).trim() || 'Shop Now',
+      sortOrder: Number(sortOrder) || 0,
       active: status === 'Active',
       image: imageFile,
-      imageUrl: imageFile ? undefined : (banner?.imageUrl || imagePreview || ''),
-      keepImage: isEdit && !imageFile && Boolean(banner?.imageUrl),
     })
   }
 
   const fieldPrefix = isEdit ? 'edit-banner' : 'add-banner'
-  const showCategory = needsCategoryContext(position)
-
-  const imageError = /upload|Image must|banner image/i.test(error) ? error : ''
-  const positionError = /position/i.test(error) ? error : ''
-  const titleError = /Title is required/i.test(error) ? error : ''
-  const categoryError = /main category/i.test(error) ? error : ''
 
   return (
     <div className="vendor-modal-overlay" onClick={onClose} role="presentation">
@@ -339,56 +361,51 @@ function BannerModal({
                   className="sr-only"
                   onChange={(event) => selectImage(event.target.files?.[0] || null)}
                 />
-                {imagePreview ? (
-                  <img src={imagePreview} alt="Banner preview" />
-                ) : (
-                  <>
-                    <span className="vendor-upload-icon" aria-hidden="true">
-                      <Icon path={paths.upload} className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="vendor-upload-copy">
-                      <span className="text-sm font-semibold text-slate-200">Select image to upload</span>
-                      <span className="text-[11px] leading-snug text-slate-500">PNG, JPG or WEBP (Max 10MB)</span>
-                    </span>
-                  </>
-                )}
-              </label>
-              {imageError ? <p className="vendor-form-error mt-2">{imageError}</p> : null}
-            </div>
+              {imagePreview ? (
+                <img src={imagePreview} alt="Banner preview" />
+              ) : (
+                <>
+                  <span className="vendor-upload-icon" aria-hidden="true">
+                    <Icon path={paths.upload} className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="vendor-upload-copy">
+                    <span className="text-sm font-semibold text-slate-200">Select image to upload</span>
+                    <span className="text-[11px] leading-snug text-slate-500">PNG, JPG or WEBP (Max 10MB)</span>
+                  </span>
+                </>
+              )}
+            </label>
+            {error && /upload|Image must|banner image/i.test(error) ? (
+              <p className="vendor-form-error mt-2">{error}</p>
+            ) : null}
 
-            <div className={`grid gap-4 ${showCategory ? 'sm:grid-cols-2' : ''}`}>
-              <div>
-                <label htmlFor={`${fieldPrefix}-position`} className="vendor-field-label">Position</label>
-                <select
-                  id={`${fieldPrefix}-position`}
-                  value={position}
-                  onChange={(event) => setPosition(event.target.value)}
-                  className="glass-input vendor-field-input"
-                >
-                  {(positionOptions && positionOptions.length ? positionOptions : BANNER_POSITIONS).map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-                {positionError ? <p className="vendor-form-error mt-2">{positionError}</p> : null}
-              </div>
-              {showCategory ? (
-                <div>
-                  <label htmlFor={`${fieldPrefix}-category`} className="vendor-field-label">Main Category</label>
-                  <select
-                    id={`${fieldPrefix}-category`}
-                    value={mainCategory}
-                    onChange={(event) => setMainCategory(event.target.value)}
-                    className="glass-input vendor-field-input"
-                  >
-                    {MAIN_CATEGORY_OPTIONS.map((option) => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
-                  {categoryError ? <p className="vendor-form-error mt-2">{categoryError}</p> : null}
+            {imagePreview ? (
+              <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-[#0b1220]">
+                <img src={imagePreview} alt="" className="max-h-40 w-full object-cover" />
+                <div className="space-y-1 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Live preview</p>
+                  <p className="text-sm font-bold text-white">{title || 'Banner title'}</p>
+                  {subtitle ? <p className="text-xs text-slate-400">{subtitle}</p> : null}
+                  <p className="text-[11px] text-slate-500">{buttonText} → {link}</p>
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
+          </div>
 
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor={`${fieldPrefix}-position`} className="vendor-field-label">Position</label>
+              <select
+                id={`${fieldPrefix}-position`}
+                value={position}
+                onChange={(event) => setPosition(event.target.value)}
+                className="glass-input vendor-field-input"
+              >
+                {BANNER_POSITIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
             <div>
               <label htmlFor={`${fieldPrefix}-status`} className="vendor-field-label">Status</label>
               <select
@@ -401,21 +418,67 @@ function BannerModal({
                 <option>Inactive</option>
               </select>
             </div>
-
-            <div>
+            <div className="sm:col-span-2">
               <label htmlFor={`${fieldPrefix}-title`} className="vendor-field-label">Title</label>
               <input
                 id={`${fieldPrefix}-title`}
                 type="text"
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
-                placeholder="Enter banner title"
+                placeholder="Epic Sale"
                 className="glass-input vendor-field-input"
               />
             </div>
+            <div className="sm:col-span-2">
+              <label htmlFor={`${fieldPrefix}-subtitle`} className="vendor-field-label">Subtitle</label>
+              <input
+                id={`${fieldPrefix}-subtitle`}
+                type="text"
+                value={subtitle}
+                onChange={(event) => setSubtitle(event.target.value)}
+                placeholder="Up to 70% off premium streetwear"
+                className="glass-input vendor-field-input"
+              />
+            </div>
+            <div>
+              <label htmlFor={`${fieldPrefix}-link`} className="vendor-field-label">Link URL</label>
+              <input
+                id={`${fieldPrefix}-link`}
+                type="text"
+                value={link}
+                onChange={(event) => setLink(event.target.value)}
+                placeholder="/products"
+                className="glass-input vendor-field-input"
+              />
+            </div>
+            <div>
+              <label htmlFor={`${fieldPrefix}-button`} className="vendor-field-label">Button text</label>
+              <input
+                id={`${fieldPrefix}-button`}
+                type="text"
+                value={buttonText}
+                onChange={(event) => setButtonText(event.target.value)}
+                placeholder="Shop Now"
+                className="glass-input vendor-field-input"
+              />
+            </div>
+            <div>
+              <label htmlFor={`${fieldPrefix}-sort`} className="vendor-field-label">Sort order</label>
+              <input
+                id={`${fieldPrefix}-sort`}
+                type="number"
+                min="0"
+                value={sortOrder}
+                onChange={(event) => setSortOrder(event.target.value)}
+                className="glass-input vendor-field-input"
+              />
+            </div>
+          </div>
 
-            {titleError ? <p className="vendor-form-error mt-2">{titleError}</p> : null}
-            {apiError ? <p className="vendor-form-error">{apiError}</p> : null}
+          {error && !/upload|Image must|banner image/i.test(error) ? (
+            <p className="vendor-form-error">{error}</p>
+          ) : null}
+          {apiError ? <p className="vendor-form-error">{apiError}</p> : null}
           </div>
 
           <div className="vendor-modal-footer !justify-stretch gap-3">
@@ -423,7 +486,7 @@ function BannerModal({
               Cancel
             </button>
             <button type="submit" className="btn-glass vendor-btn-submit flex-1" disabled={submitting}>
-              {submitting ? 'Adding...' : (isEdit ? 'Save Changes' : 'Add Banner')}
+              {submitting ? 'Saving...' : (isEdit ? 'Save Changes' : 'Add Banner')}
             </button>
           </div>
         </form>
@@ -435,7 +498,6 @@ function BannerModal({
 export default function Banners({ onNavigate }) {
   const [banners, setBanners] = useState([])
   const [loadingBanners, setLoadingBanners] = useState(false)
-  const [positionOptions, setPositionOptions] = useState(BANNER_POSITIONS)
   const [bannerSubmitting, setBannerSubmitting] = useState(false)
   const [bannerApiError, setBannerApiError] = useState('')
   const [bannerToastSuccess, setBannerToastSuccess] = useState('')
@@ -450,42 +512,21 @@ export default function Banners({ onNavigate }) {
   const [viewingBanner, setViewingBanner] = useState(null)
   const [deletingBanner, setDeletingBanner] = useState(null)
 
+  const loadBanners = async () => {
+    setLoadingBanners(true)
+    try {
+      const data = await fetchBannersAPI({ page: 1, limit: 100 })
+      const list = data?.data || data?.banners || []
+      setBanners(list.map(mapApiBanner))
+    } catch {
+      setBanners([])
+    } finally {
+      setLoadingBanners(false)
+    }
+  }
+
   useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      setLoadingBanners(true)
-      try {
-        const data = await fetchBannersAPI({ page: 1, limit: 10 })
-        const list = data?.data || data?.banners || []
-        const next = list.map((item) => ({
-          id: item.id ?? Date.now(),
-          title: item.title || '',
-          link: item.link || '',
-          buttonText: item.button_text || item.buttonText || '',
-          text: item.subtitle || item.text || '',
-          sortOrder: item.sort_order ?? item.sortOrder ?? 0,
-          imageUrl: buildImageUrl(item.image || item.imageUrl),
-          position: item.position || '',
-          categoryContext: item.subtitle ? `Subtitle: ${item.subtitle}` : 'None',
-          created: formatApiDate(item.created_at || item.created),
-          updated: formatApiDate(item.updated_at || item.updated),
-          active: typeof item.is_active === 'boolean' ? item.is_active : Boolean(item.active),
-        }))
-        if (cancelled) return
-        setBanners(next)
-        setPositionOptions([...new Set(next.map((b) => b.position).filter(Boolean))] || BANNER_POSITIONS)
-      } catch (err) {
-        if (cancelled) return
-        setBanners([])
-      } finally {
-        if (cancelled) return
-        setLoadingBanners(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
+    loadBanners()
   }, [])
 
   useEffect(() => {
@@ -501,8 +542,9 @@ export default function Banners({ onNavigate }) {
     const search = query.trim().toLowerCase()
     return banners.filter((banner) => (
       (!search
-        || banner.position.toLowerCase().includes(search)
-        || banner.categoryContext.toLowerCase().includes(search))
+        || banner.title.toLowerCase().includes(search)
+        || banner.subtitle.toLowerCase().includes(search)
+        || banner.positionLabel.toLowerCase().includes(search))
       && (!position || banner.position === position)
       && (!status || (status === 'Active') === banner.active)
       && isWithinDateRange(banner, startDate, endDate)
@@ -515,33 +557,7 @@ export default function Banners({ onNavigate }) {
     setStatus('')
     setStartDate('')
     setEndDate('')
-
-    setLoadingBanners(true)
-    try {
-      const data = await fetchBannersAPI({ page: 1, limit: 10 })
-      const list = data?.data || data?.banners || []
-      const next = list.map((item) => ({
-        id: item.id ?? Date.now(),
-        title: item.title || '',
-        link: item.link || '',
-        buttonText: item.button_text || item.buttonText || '',
-        text: item.subtitle || item.text || '',
-        sortOrder: item.sort_order ?? item.sortOrder ?? 0,
-        imageUrl: buildImageUrl(item.image || item.imageUrl),
-        position: item.position || '',
-        categoryContext: item.subtitle ? `Subtitle: ${item.subtitle}` : 'None',
-        created: formatApiDate(item.created_at || item.created),
-        updated: formatApiDate(item.updated_at || item.updated),
-        active: typeof item.is_active === 'boolean' ? item.is_active : Boolean(item.active),
-      }))
-      setBanners(next)
-      setPositionOptions([...new Set(next.map((b) => b.position).filter(Boolean))] || BANNER_POSITIONS)
-    } catch {
-      setBanners([])
-      setPositionOptions(BANNER_POSITIONS)
-    } finally {
-      setLoadingBanners(false)
-    }
+    await loadBanners()
   }
 
   const closeModal = () => {
@@ -593,26 +609,29 @@ export default function Banners({ onNavigate }) {
     }
   }
 
+  const appendFormFields = (formData, payload) => {
+    formData.append('title', payload.title || 'Home Banner')
+    formData.append('subtitle', payload.subtitle || '')
+    formData.append('link', payload.link || '/products')
+    formData.append('buttonText', payload.buttonText || 'Shop Now')
+    formData.append('position', positionValue(payload.position))
+    formData.append('sortOrder', String(payload.sortOrder ?? 0))
+    formData.append('status', payload.active ? 'Active' : 'Inactive')
+    if (payload.image) formData.append('image', payload.image)
+  }
+
   const addBanner = async (payload) => {
     try {
       setBannerSubmitting(true)
       setBannerApiError('')
       setBannerToastError('')
       const formData = new FormData()
-      // Backend SS ke hisaab se required fields (defaults use kiye hain)
-      formData.append('link', 'https://shieldxcart.com')
-      formData.append('buttonText', 'Shop Now')
-      formData.append('text', 'Mega Sale')
-      formData.append('title', payload.title || 'Home Banner')
-      formData.append('position', payload.position)
-      formData.append('sortOrder', String(payload.sortOrder ?? 0))
-      if (payload.image) formData.append('image', payload.image)
-      else if (payload.imageUrl) formData.append('image', payload.imageUrl)
+      appendFormFields(formData, payload)
 
       const data = await createBannerAPI(formData)
       setBannerToastSuccess(data?.message || 'Banner added successfully.')
       closeModal()
-      await refresh()
+      await loadBanners()
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'Failed to add banner.'
       setBannerApiError(msg)
@@ -627,24 +646,14 @@ export default function Banners({ onNavigate }) {
     try {
       setBannerSubmitting(true)
       setBannerApiError('')
-      const id = payload.id
       const formData = new FormData()
-      formData.append('title', payload.title || 'Home Banner')
-      formData.append('buttonText', payload.buttonText || 'Shop Now')
-      formData.append('text', payload.text || 'Mega Sale')
-      formData.append('link', payload.link || 'https://shieldxcart.com')
-      formData.append('position', payload.position)
-      formData.append('sortOrder', String(payload.sortOrder ?? 0))
-      if (payload.image) formData.append('image', payload.image)
+      appendFormFields(formData, payload)
 
-      // is_active banner status ka alag endpoint hai, par update me bhi bhej dete hain
-      formData.append('is_active', payload.active ? 'true' : 'false')
-
-      const data = await updateBannerAPI(id, formData)
+      const data = await updateBannerAPI(payload.id, formData)
       setBannerToastSuccess(data?.message || 'Banner updated successfully.')
       setBannerToastError('')
       closeModal()
-      await refresh()
+      await loadBanners()
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'Failed to update banner.'
       setBannerApiError(msg)
@@ -706,8 +715,8 @@ export default function Banners({ onNavigate }) {
               className="glass-input rounded-xl px-3 py-2 text-sm"
             >
               <option value="">Position</option>
-              {(positionOptions && positionOptions.length ? positionOptions : BANNER_POSITIONS).map((option) => (
-                <option key={option} value={option}>{option}</option>
+              {BANNER_POSITIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
             <select
@@ -776,16 +785,22 @@ export default function Banners({ onNavigate }) {
                 <th>Image</th>
                 <th>Position</th>
                 <th>Title</th>
-                <th>Category Context</th>
+                <th>Subtitle</th>
                 <th>Status</th>
                 <th>Timestamp</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredBanners.length === 0 ? (
+              {loadingBanners ? (
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-sm text-slate-400">
+                  <td colSpan={9} className="py-10 text-center text-sm text-slate-400">
+                    Loading banners...
+                  </td>
+                </tr>
+              ) : filteredBanners.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-10 text-center text-sm text-slate-400">
                     No banners found for the selected filters.
                   </td>
                 </tr>
@@ -794,19 +809,13 @@ export default function Banners({ onNavigate }) {
                   <td><input type="checkbox" className="rounded border-white/20 bg-white/5" /></td>
                   <td className="text-slate-400">{index + 1}</td>
                   <td>
-                    <div className="banner-thumb">
-                      {banner.imageUrl ? (
-                        <img src={banner.imageUrl} alt={`${banner.position} banner`} />
-                      ) : (
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">No image</span>
-                      )}
-                    </div>
+                    <BannerThumb src={banner.imageUrl} alt={banner.title || banner.positionLabel} />
                   </td>
                   <td>
-                    <span className="banner-position-badge">{banner.position}</span>
+                    <span className="banner-position-badge">{banner.positionLabel}</span>
                   </td>
                   <td className="font-semibold text-slate-200">{banner.title || '—'}</td>
-                  <td className="text-slate-400">{banner.categoryContext}</td>
+                  <td className="max-w-[220px] truncate text-slate-400">{banner.subtitle || '—'}</td>
                   <td>
                     <div className="flex items-center gap-2">
                       <label className="toggle-switch">
@@ -867,7 +876,6 @@ export default function Banners({ onNavigate }) {
         onClose={closeModal}
         onSubmit={handleModalSubmit}
         banner={editingBanner}
-        positionOptions={positionOptions}
         submitting={bannerSubmitting}
         apiError={bannerApiError}
       />

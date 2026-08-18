@@ -4,16 +4,17 @@ import {
   CategoryScale, Chart as ChartJS, Filler, Legend, LineElement, LinearScale,
   PointElement, Tooltip,
 } from 'chart.js'
-import DeleteConfirmModal from '../components/DeleteConfirmModal'
+import { fetchProductsAPI } from '../services/productService'
+import { fetchOrdersAPI } from '../services/orderService'
+import { fetchUsersAPI } from '../services/userService'
+import { fetchVendorsAPI } from '../services/vendorService'
+import { fetchMainCategoriesAPI } from '../services/mainCategoryService'
+import { fetchCategoriesAPI } from '../services/categoryService'
+import { fetchSubCategoriesAPI } from '../services/subCategoryService'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
 
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const sourceData = [
-  ['Orders', [2, 3, 2, 4, 3, 5, 18, 6, 4, 3, 5, 4], '#00A3FF', 'rgba(0, 163, 255, 0.08)', '#007BFF'],
-  ['Members / Users', [1, 2, 1, 2, 2, 3, 12, 4, 3, 2, 3, 2], '#C0C0C0', 'rgba(192, 192, 192, 0.06)', '#C0C0C0'],
-  ['Products Added', [5, 8, 6, 10, 12, 15, 280, 20, 14, 11, 9, 7], '#007BFF', 'rgba(0, 123, 255, 0.1)', '#007BFF'],
-]
 const chartOptions = {
   responsive: true, maintainAspectRatio: false,
   plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, backgroundColor: 'rgba(0, 0, 0, 0.85)', borderColor: 'rgba(0, 163, 255, 0.3)', titleColor: '#E0E0E0', bodyColor: '#C0C0C0', padding: 12, cornerRadius: 8 } },
@@ -30,40 +31,22 @@ const STAT_NAV = {
   'Sub Categories': 'sub-category',
 }
 
-const statCards = [
-  ['Total Products', 360, '#34d399', 'glass-icon-emerald', 'M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007Z', <div key="product-detail" className="mt-4 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium"><span className="text-emerald-400">359 In Stock</span><span className="text-amber-400">0 Low Stock</span><span className="text-red-400">1 Out of Stock</span></div>],
-  ['Total Members', 20, '#00A3FF', 'glass-icon-blue', 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z', <div key="member-detail" className="mt-4 flex flex-wrap gap-2 text-xs font-medium"><span className="glass-badge rounded-full px-2 py-0.5">10 User</span><span className="glass-badge rounded-full px-2 py-0.5">6 Vendor</span><span className="glass-badge rounded-full px-2 py-0.5">3 Admin</span><span className="glass-badge rounded-full px-2 py-0.5">1 Super Admin</span></div>],
-  ['Total Orders', 42, '#a78bfa', 'glass-icon-violet', 'M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007Z'],
-  ['Main Categories', 36, '#fb923c', 'glass-icon-orange', 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z'],
-  ['Categories', 231, '#c084fc', 'glass-icon-purple', 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 1-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z'],
-  ['Sub Categories', 411, '#f472b6', 'glass-icon-pink', 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 1-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z'],
+const STAT_META = [
+  ['Total Products', '#34d399', 'glass-icon-emerald', 'M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007Z'],
+  ['Total Members', '#00A3FF', 'glass-icon-blue', 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z'],
+  ['Total Orders', '#a78bfa', 'glass-icon-violet', 'M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007Z'],
+  ['Main Categories', '#fb923c', 'glass-icon-orange', 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z'],
+  ['Categories', '#c084fc', 'glass-icon-purple', 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 1-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z'],
+  ['Sub Categories', '#f472b6', 'glass-icon-pink', 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 1-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z'],
 ]
 
-const actionPaths = {
-  view: 'M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z',
-  viewEye: 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
-  edit: 'm16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125',
-  delete: 'm14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0',
-}
-
-const INITIAL_ORDERS = [
-  { id: 1, orderId: '#ORD-260714-U4KE', name: 'John Doe', email: 'john@example.com', amount: '₹32.00', status: 'pending', color: 'text-amber-500' },
-  { id: 2, orderId: '#ORD-260713-M2XP', name: 'Sarah Miller', email: 'sarah@example.com', amount: '₹128.50', status: 'delivered', color: 'text-emerald-600' },
-  { id: 3, orderId: '#ORD-260712-K9BN', name: 'Mike Wilson', email: 'mike@example.com', amount: '₹54.00', status: 'cancelled', color: 'text-red-500' },
-  { id: 4, orderId: '#ORD-260711-P3QW', name: 'Emma Davis', email: 'emma@example.com', amount: '₹89.99', status: 'delivered', color: 'text-emerald-600' },
-]
-
-const INITIAL_PRODUCTS = [
-  { id: 1, initials: 'SP', name: 'Sample Product', unit: 'roll', price: '₹25.00', stock: '120', color: 'border border-white/10 bg-white/5 text-silver-300' },
-  { id: 2, initials: 'MS', name: 'My Milk Store', unit: 'kg', price: '₹48.00', stock: '85', color: 'bg-amber-50 text-amber-600' },
-  { id: 3, initials: 'OF', name: 'Organic Flour', unit: 'kg', price: '₹62.00', stock: '200', color: 'bg-blue-50 text-blue-600' },
-]
-
-const INITIAL_USERS = [
-  { id: 1, role: 'vendor', initials: 'R', name: 'Rajesh Kumar', email: 'rajesh@example.com', phone: '+91 98765 43210', color: 'bg-teal-100 text-teal-700' },
-  { id: 2, role: 'user', initials: 'P', name: 'Priya Sharma', email: 'priya@example.com', phone: '+91 87654 32109', color: 'bg-violet-100 text-violet-700' },
-  { id: 3, role: 'vendor', initials: 'A', name: 'Amit Patel', email: 'amit@example.com', phone: '+91 76543 21098', color: 'bg-orange-100 text-orange-700' },
-  { id: 4, role: 'user', initials: 'S', name: 'Sneha Reddy', email: 'sneha@example.com', phone: '+91 65432 10987', color: 'bg-pink-100 text-pink-700' },
+const AVATAR_COLORS = [
+  'bg-teal-100 text-teal-700',
+  'bg-violet-100 text-violet-700',
+  'bg-orange-100 text-orange-700',
+  'bg-pink-100 text-pink-700',
+  'bg-sky-100 text-sky-700',
+  'bg-emerald-100 text-emerald-700',
 ]
 
 function Icon({ path, className = 'h-5 w-5' }) {
@@ -74,22 +57,77 @@ function Icon({ path, className = 'h-5 w-5' }) {
   )
 }
 
-function ActionButtons({ label, onView, onEdit, onDelete }) {
+function money(value) {
+  return `₹${Number(value || 0).toLocaleString('en-IN')}`
+}
+
+function initials(name = '') {
+  return String(name)
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('') || '—'
+}
+
+function statusColor(status) {
+  const value = String(status || '').toLowerCase()
+  if (value.includes('deliver')) return 'text-emerald-600'
+  if (value.includes('cancel') || value.includes('fail')) return 'text-red-500'
+  if (value.includes('pending') || value.includes('process') || value.includes('packed')) return 'text-amber-500'
+  return 'text-sky-400'
+}
+
+function rangeBounds(range) {
+  const end = new Date()
+  const start = new Date()
+  if (range === 'today') start.setHours(0, 0, 0, 0)
+  else if (range === 'week') {
+    start.setDate(start.getDate() - 7)
+    start.setHours(0, 0, 0, 0)
+  } else if (range === 'month') {
+    start.setMonth(start.getMonth() - 1)
+    start.setHours(0, 0, 0, 0)
+  } else {
+    start.setFullYear(start.getFullYear() - 1)
+    start.setHours(0, 0, 0, 0)
+  }
+  return { start, end }
+}
+
+function toDateParam(date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function inRange(value, start, end) {
+  if (!value) return false
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return false
+  return date >= start && date <= end
+}
+
+function monthCounts(items, getDate, year) {
+  const counts = Array(12).fill(0)
+  items.forEach((item) => {
+    const date = new Date(getDate(item))
+    if (Number.isNaN(date.getTime()) || date.getFullYear() !== year) return
+    counts[date.getMonth()] += 1
+  })
+  return counts
+}
+
+function totalFrom(res) {
+  return Number(res?.totalRecords ?? res?.count ?? res?.data?.length ?? 0)
+}
+
+function ViewButton({ label, onClick }) {
   return (
-    <div className="flex items-center gap-1.5">
-      <button type="button" className="action-btn" aria-label={`View ${label}`} onClick={onView}>
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-          <path strokeLinecap="round" strokeLinejoin="round" d={actionPaths.view} />
-          <path strokeLinecap="round" strokeLinejoin="round" d={actionPaths.viewEye} />
-        </svg>
-      </button>
-      <button type="button" className="action-btn" aria-label={`Edit ${label}`} onClick={onEdit}>
-        <Icon className="h-4 w-4" path={actionPaths.edit} />
-      </button>
-      <button type="button" className="action-btn action-btn-danger" aria-label={`Delete ${label}`} onClick={onDelete}>
-        <Icon className="h-4 w-4" path={actionPaths.delete} />
-      </button>
-    </div>
+    <button type="button" className="action-btn" aria-label={`View ${label}`} onClick={onClick}>
+      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+      </svg>
+    </button>
   )
 }
 
@@ -115,7 +153,7 @@ function StatCard({ stat, onClick }) {
       <div className="relative z-[1] flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-silver-400/70">{label}</p>
-          <p className="mt-1 text-3xl font-bold stat-value" data-count={count}>{count}</p>
+          <p className="mt-1 text-3xl font-bold stat-value">{count}</p>
         </div>
         <div className={`icon-3d icon-3d-lg glass-icon shrink-0 ${iconClass}`}>
           <Icon path={path} />
@@ -129,12 +167,29 @@ function StatCard({ stat, onClick }) {
 export default function Dashboard({ onNavigate }) {
   const [range, setRange] = useState('year')
   const [userFilter, setUserFilter] = useState('all')
-  const [version, setVersion] = useState(0)
   const [liveDate, setLiveDate] = useState('')
-  const [orders, setOrders] = useState(INITIAL_ORDERS)
-  const [products, setProducts] = useState(INITIAL_PRODUCTS)
-  const [users, setUsers] = useState(INITIAL_USERS)
-  const [deleting, setDeleting] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [stats, setStats] = useState({
+    products: 0,
+    inStock: 0,
+    lowStock: 0,
+    outOfStock: 0,
+    users: 0,
+    vendors: 0,
+    orders: 0,
+    mainCategories: 0,
+    categories: 0,
+    subCategories: 0,
+  })
+  const [orders, setOrders] = useState([])
+  const [products, setProducts] = useState([])
+  const [members, setMembers] = useState([])
+  const [chartSeries, setChartSeries] = useState({
+    orders: Array(12).fill(0),
+    users: Array(12).fill(0),
+    products: Array(12).fill(0),
+  })
 
   useEffect(() => {
     setLiveDate(new Date().toLocaleDateString('en-US', {
@@ -142,24 +197,183 @@ export default function Dashboard({ onNavigate }) {
     }).toUpperCase())
   }, [])
 
+  const loadDashboard = async () => {
+    setLoading(true)
+    setError('')
+    const { start, end } = rangeBounds(range)
+    const dateParams = { date_from: toDateParam(start), date_to: toDateParam(end) }
+
+    const settled = await Promise.allSettled([
+      fetchProductsAPI({ page: 1, limit: 1, ...dateParams }),
+      fetchProductsAPI({ page: 1, limit: 100, ...dateParams }),
+      fetchProductsAPI({ page: 1, limit: 1, stock_band: 'in-stock' }),
+      fetchProductsAPI({ page: 1, limit: 1, stock_band: 'low-stock' }),
+      fetchProductsAPI({ page: 1, limit: 1, stock_band: 'out-of-stock' }),
+      fetchOrdersAPI({ page: 1, limit: 50 }),
+      fetchUsersAPI(),
+      fetchVendorsAPI(),
+      fetchMainCategoriesAPI({ page: 1, limit: 1 }),
+      fetchCategoriesAPI({ page: 1, limit: 1 }),
+      fetchSubCategoriesAPI({ page: 1, limit: 1 }),
+    ])
+
+    const value = (index, fallback) => (
+      settled[index].status === 'fulfilled' ? settled[index].value : fallback
+    )
+
+    const productTotal = value(0, {})
+    const productPage = value(1, { data: [] })
+    const inStock = value(2, {})
+    const lowStock = value(3, {})
+    const outStock = value(4, {})
+    const orderRes = value(5, { data: [] })
+    const userRes = value(6, { users: [] })
+    const vendorRes = value(7, { vendors: [] })
+    const mainRes = value(8, {})
+    const catRes = value(9, {})
+    const subRes = value(10, {})
+
+    const productRows = Array.isArray(productPage?.data) ? productPage.data : []
+    const orderRows = (Array.isArray(orderRes?.data) ? orderRes.data : [])
+      .filter((row) => inRange(row.created_at || row.createdAt, start, end))
+    const userRows = Array.isArray(userRes?.users) ? userRes.users : []
+    const vendorRows = Array.isArray(vendorRes?.vendors) ? vendorRes.vendors : []
+    const rangedUsers = userRows.filter((row) => inRange(row.created_at || row.createdAt, start, end))
+    const rangedVendors = vendorRows.filter((row) => inRange(row.created_at || row.createdAt, start, end))
+
+    setStats({
+      products: totalFrom(productTotal),
+      inStock: totalFrom(inStock),
+      lowStock: totalFrom(lowStock),
+      outOfStock: totalFrom(outStock),
+      users: rangedUsers.length,
+      vendors: rangedVendors.length,
+      orders: orderRows.length,
+      mainCategories: totalFrom(mainRes),
+      categories: totalFrom(catRes),
+      subCategories: totalFrom(subRes),
+    })
+
+    setOrders(orderRows.slice(0, 5).map((row) => ({
+      id: row.id,
+      orderId: row.order_number || `#${row.id}`,
+      name: row.user?.name || 'Customer',
+      email: row.user?.email || '',
+      amount: money(row.total_amount),
+      status: String(row.status || 'pending').replaceAll('_', ' '),
+      color: statusColor(row.status),
+    })))
+
+    setProducts(productRows.slice(0, 5).map((row, index) => {
+      const name = row.title || row.name || 'Product'
+      const stock = Number(row.stock_qty ?? 0)
+      return {
+        id: row.id,
+        initials: initials(name),
+        name,
+        unit: row.unit?.symbol || row.brand || '',
+        price: money(row.effective_price ?? row.discounted_price ?? row.price),
+        stock: String(stock),
+        status: stock <= 0 ? 'out of stock' : 'available',
+        color: AVATAR_COLORS[index % AVATAR_COLORS.length],
+      }
+    }))
+
+    const mappedUsers = userRows.map((row, index) => ({
+      id: `user-${row.id}`,
+      sourceId: row.id,
+      role: 'user',
+      initials: initials(row.name),
+      name: row.name || 'User',
+      email: row.email || '',
+      phone: row.phone || '',
+      active: Boolean(row.is_active),
+      createdAt: row.created_at || row.createdAt,
+      color: AVATAR_COLORS[index % AVATAR_COLORS.length],
+    }))
+    const mappedVendors = vendorRows.map((row, index) => ({
+      id: `vendor-${row.id}`,
+      sourceId: row.id,
+      role: 'vendor',
+      initials: initials(row.name || row.shop_name),
+      name: row.name || row.shop_name || 'Vendor',
+      email: row.email || '',
+      phone: row.phone || '',
+      active: row.status === 'approved' || Boolean(row.is_active),
+      createdAt: row.created_at || row.createdAt,
+      color: AVATAR_COLORS[(index + 2) % AVATAR_COLORS.length],
+    }))
+    setMembers(
+      [...mappedUsers, ...mappedVendors]
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+        .slice(0, 12)
+    )
+
+    const year = new Date().getFullYear()
+    setChartSeries({
+      orders: monthCounts(Array.isArray(orderRes?.data) ? orderRes.data : [], (row) => row.created_at || row.createdAt, year),
+      users: monthCounts(userRows, (row) => row.created_at || row.createdAt, year),
+      products: monthCounts(productRows, (row) => row.created_at || row.createdAt, year),
+    })
+
+    const failed = settled.filter((item) => item.status === 'rejected')
+    if (failed.length === settled.length) {
+      setError('Failed to load dashboard data.')
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    loadDashboard()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range])
+
   const chartData = useMemo(() => ({
     labels: months,
-    datasets: sourceData.map(([label, values, borderColor, backgroundColor, pointBorderColor]) => ({
+    datasets: [
+      ['Orders', chartSeries.orders, '#00A3FF', 'rgba(0, 163, 255, 0.08)', '#007BFF'],
+      ['Members / Users', chartSeries.users, '#C0C0C0', 'rgba(192, 192, 192, 0.06)', '#C0C0C0'],
+      ['Products Added', chartSeries.products, '#007BFF', 'rgba(0, 123, 255, 0.1)', '#007BFF'],
+    ].map(([label, values, borderColor, backgroundColor, pointBorderColor]) => ({
       label,
-      data: values.map((value) => Math.max(0, value + (version ? Math.round((Math.random() - 0.5) * Math.max(2, value * 0.2)) : 0))),
-      borderColor, backgroundColor,
+      data: values,
+      borderColor,
+      backgroundColor,
       pointBackgroundColor: label === 'Products Added' ? '#33b5ff' : borderColor === '#C0C0C0' ? '#E0E0E0' : borderColor,
-      pointBorderColor, tension: 0.4, fill: false, pointRadius: 3, pointHoverRadius: 5,
+      pointBorderColor,
+      tension: 0.4,
+      fill: false,
+      pointRadius: 3,
+      pointHoverRadius: 5,
     })),
-  }), [version])
+  }), [chartSeries])
 
-  const confirmDelete = () => {
-    if (!deleting) return
-    if (deleting.type === 'order') setOrders((current) => current.filter((row) => row.id !== deleting.id))
-    if (deleting.type === 'product') setProducts((current) => current.filter((row) => row.id !== deleting.id))
-    if (deleting.type === 'user') setUsers((current) => current.filter((row) => row.id !== deleting.id))
-    setDeleting(null)
-  }
+  const memberCount = stats.users + stats.vendors
+  const statCards = [
+    [
+      ...STAT_META[0],
+      stats.products,
+      <div key="product-detail" className="mt-4 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium">
+        <span className="text-emerald-400">{stats.inStock} In Stock</span>
+        <span className="text-amber-400">{stats.lowStock} Low Stock</span>
+        <span className="text-red-400">{stats.outOfStock} Out of Stock</span>
+      </div>,
+    ],
+    [
+      ...STAT_META[1],
+      memberCount,
+      <div key="member-detail" className="mt-4 flex flex-wrap gap-2 text-xs font-medium">
+        <span className="glass-badge rounded-full px-2 py-0.5">{stats.users} User</span>
+        <span className="glass-badge rounded-full px-2 py-0.5">{stats.vendors} Vendor</span>
+      </div>,
+    ],
+    [...STAT_META[2], stats.orders],
+    [...STAT_META[3], stats.mainCategories],
+    [...STAT_META[4], stats.categories],
+    [...STAT_META[5], stats.subCategories],
+  ].map(([label, accent, iconClass, path, count, detail]) => [label, count, accent, iconClass, path, detail])
+
+  const visibleMembers = members.filter((user) => userFilter === 'all' || user.role === userFilter)
 
   return (
     <section id="page-dashboard" className="page-view">
@@ -172,7 +386,7 @@ export default function Dashboard({ onNavigate }) {
             <p className="mt-2 font-display text-[10px] font-medium tracking-wide text-brand-400/60">{liveDate}</p>
           </div>
           <div className="glass-pill flex flex-wrap gap-1 rounded-xl p-1">
-            {['today', 'week', 'month', 'year', 'custom'].map((item) => (
+            {['today', 'week', 'month', 'year'].map((item) => (
               <button
                 key={item}
                 type="button"
@@ -185,6 +399,9 @@ export default function Dashboard({ onNavigate }) {
           </div>
         </div>
       </div>
+
+      {error ? <div className="vendor-form-error mb-4">{error}</div> : null}
+      {loading ? <p className="mb-4 text-sm text-slate-400">Loading live dashboard data...</p> : null}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat) => (
@@ -202,7 +419,7 @@ export default function Dashboard({ onNavigate }) {
           <span className="corner corner-bl" /><span className="corner corner-br" />
           <div className="mb-4 flex items-center justify-between">
             <h3 className="font-display text-sm font-bold tracking-wide text-shield">Global Analytics</h3>
-            <button type="button" onClick={() => setVersion((value) => value + 1)} className="btn-glass flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium">
+            <button type="button" onClick={loadDashboard} className="btn-glass flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium">
               <Icon className="h-3.5 w-3.5" path="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182M21.015 12H16.02" />
               Refresh
             </button>
@@ -226,7 +443,11 @@ export default function Dashboard({ onNavigate }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {orders.map((order) => (
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-sm text-slate-500">No orders in this range.</td>
+                </tr>
+              ) : orders.map((order) => (
                 <tr key={order.id}>
                   <td className="py-3 pr-3 font-semibold text-slate-200">{order.orderId}</td>
                   <td className="py-3 pr-3">
@@ -236,12 +457,7 @@ export default function Dashboard({ onNavigate }) {
                   <td className="py-3 pr-3 font-medium text-slate-300">{order.amount}</td>
                   <td className={`py-3 pr-3 text-xs font-semibold capitalize ${order.color}`}>{order.status}</td>
                   <td className="py-3">
-                    <ActionButtons
-                      label={order.orderId}
-                      onView={() => onNavigate?.('orders')}
-                      onEdit={() => onNavigate?.('orders')}
-                      onDelete={() => setDeleting({ type: 'order', id: order.id, name: order.orderId })}
-                    />
+                    <ViewButton label={order.orderId} onClick={() => onNavigate?.('orders')} />
                   </td>
                 </tr>
               ))}
@@ -263,7 +479,11 @@ export default function Dashboard({ onNavigate }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {products.map((product) => (
+              {products.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-sm text-slate-500">No products in this range.</td>
+                </tr>
+              ) : products.map((product) => (
                 <tr key={product.id}>
                   <td className="py-3 pr-3">
                     <div className="flex items-center gap-3">
@@ -276,14 +496,11 @@ export default function Dashboard({ onNavigate }) {
                   </td>
                   <td className="py-3 pr-3 font-medium text-slate-300">{product.price}</td>
                   <td className="py-3 pr-3 text-slate-400">{product.stock}</td>
-                  <td className="py-3 pr-3 text-xs font-semibold capitalize text-emerald-600">available</td>
+                  <td className={`py-3 pr-3 text-xs font-semibold capitalize ${product.status === 'available' ? 'text-emerald-600' : 'text-red-400'}`}>
+                    {product.status}
+                  </td>
                   <td className="py-3">
-                    <ActionButtons
-                      label={product.name}
-                      onView={() => onNavigate?.('products')}
-                      onEdit={() => onNavigate?.('products')}
-                      onDelete={() => setDeleting({ type: 'product', id: product.id, name: product.name })}
-                    />
+                    <ViewButton label={product.name} onClick={() => onNavigate?.('products')} />
                   </td>
                 </tr>
               ))}
@@ -315,7 +532,11 @@ export default function Dashboard({ onNavigate }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {users.filter((user) => userFilter === 'all' || user.role === userFilter).map((user) => (
+              {visibleMembers.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-sm text-slate-500">No members yet.</td>
+                </tr>
+              ) : visibleMembers.slice(0, 6).map((user) => (
                 <tr key={user.id} data-role={user.role}>
                   <td className="py-3 pr-3">
                     <div className="flex items-center gap-3">
@@ -326,25 +547,19 @@ export default function Dashboard({ onNavigate }) {
                       </div>
                     </div>
                   </td>
-                  <td className="py-3 pr-3 text-slate-400">{user.phone}</td>
+                  <td className="py-3 pr-3 text-slate-400">{user.phone || '—'}</td>
                   <td className="py-3 pr-3">
                     <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-medium text-silver-300">
                       {user.role[0].toUpperCase() + user.role.slice(1)}
                     </span>
                   </td>
-                  <td className="py-3 pr-3 text-xs font-semibold text-emerald-600">Active</td>
+                  <td className={`py-3 pr-3 text-xs font-semibold ${user.active ? 'text-emerald-600' : 'text-slate-500'}`}>
+                    {user.active ? 'Active' : 'Inactive'}
+                  </td>
                   <td className="py-3">
-                    <ActionButtons
+                    <ViewButton
                       label={user.name}
-                      onView={() => onNavigate?.('user-insights', {
-                        id: user.id,
-                        name: user.name,
-                        email: user.email,
-                        phone: user.phone,
-                        role: user.role === 'vendor' ? 'Vendor' : 'User',
-                      })}
-                      onEdit={() => onNavigate?.(user.role === 'vendor' ? 'vendors' : 'users')}
-                      onDelete={() => setDeleting({ type: 'user', id: user.id, name: user.name })}
+                      onClick={() => onNavigate?.(user.role === 'vendor' ? 'vendors' : 'users')}
                     />
                   </td>
                 </tr>
@@ -353,14 +568,6 @@ export default function Dashboard({ onNavigate }) {
           </table>
         </TableCard>
       </div>
-
-      <DeleteConfirmModal
-        open={Boolean(deleting)}
-        onClose={() => setDeleting(null)}
-        onConfirm={confirmDelete}
-        itemName={deleting?.name || ''}
-        title="Delete Item"
-      />
     </section>
   )
 }

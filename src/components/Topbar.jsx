@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { BellIcon, ChevronIcon, MenuIcon, RefreshIcon } from './Icons'
 import { fetchInboxAPI, markInboxReadAPI } from '../services/notificationService'
 import { io } from 'socket.io-client'
+import { SOCKET_URL } from '../config/env'
 
 const AUTH_STORAGE_KEY = 'shieldx-admin-auth'
-const SOCKET_URL = 'http://localhost:5001'
 
 function relativeTime(value) {
   if (!value) return ''
@@ -22,7 +22,9 @@ function relativeTime(value) {
 
 function getAdminToken() {
   try {
-    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY)
+    const raw =
+      window.localStorage.getItem(AUTH_STORAGE_KEY) ||
+      window.sessionStorage.getItem(AUTH_STORAGE_KEY)
     if (!raw) return ''
     return JSON.parse(raw)?.token || ''
   } catch {

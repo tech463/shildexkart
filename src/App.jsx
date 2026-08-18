@@ -40,7 +40,9 @@ const AUTH_STORAGE_KEY = 'shieldx-admin-auth'
 
 function readStoredAuth() {
   try {
-    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY)
+    const raw =
+      window.localStorage.getItem(AUTH_STORAGE_KEY) ||
+      window.sessionStorage.getItem(AUTH_STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!parsed?.email) return null
@@ -180,11 +182,15 @@ function NotFoundPage() {
   const onNavigate = useAppNavigate()
   return (
     <section className="page-view">
-      <div className="neo-card glass-card p-8">
-        <p className="mb-4 text-sm text-slate-400">Page not found.</p>
+      <div className="neo-card glass-card mx-auto max-w-xl p-10 text-center">
+        <p className="text-xs font-bold uppercase tracking-[0.24em] text-brand-400">404</p>
+        <h1 className="mt-3 text-3xl font-black text-white">Page not found</h1>
+        <p className="mt-3 text-sm text-slate-400">
+          This admin route does not exist or is no longer available.
+        </p>
         <button
           type="button"
-          className="text-sm font-semibold text-brand-400 hover:underline"
+          className="mt-6 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-400"
           onClick={() => onNavigate('dashboard')}
         >
           Back to Dashboard
@@ -203,14 +209,29 @@ export default function App() {
   useEffect(() => {
     if (!authUser) {
       window.localStorage.removeItem(AUTH_STORAGE_KEY)
+      window.sessionStorage.removeItem(AUTH_STORAGE_KEY)
       return
     }
+    const payload = JSON.stringify(authUser)
     if (authUser.remember) {
-      window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser))
+      window.localStorage.setItem(AUTH_STORAGE_KEY, payload)
+      window.sessionStorage.removeItem(AUTH_STORAGE_KEY)
     } else {
+      window.sessionStorage.setItem(AUTH_STORAGE_KEY, payload)
       window.localStorage.removeItem(AUTH_STORAGE_KEY)
     }
   }, [authUser])
+
+  useEffect(() => {
+    const onExpired = () => {
+      setAuthUser(null)
+      if (!window.location.pathname.includes('/login')) {
+        navigate('/login', { replace: true })
+      }
+    }
+    window.addEventListener('shieldx-admin-auth-expired', onExpired)
+    return () => window.removeEventListener('shieldx-admin-auth-expired', onExpired)
+  }, [navigate])
 
   const handleAuthenticated = ({ email, remember, token }) => {
     setAuthUser({ email, remember: Boolean(remember), token })
