@@ -988,6 +988,11 @@ export default function EntityListPage({ pageId, onNavigate }) {
         <span className="card-accent" aria-hidden="true" />
         {toastSuccess ? <div className="notif-toast mb-4">{toastSuccess}</div> : null}
         {toastError ? <div className="vendor-form-error mb-4">{toastError}</div> : null}
+        {pageId === 'product-tags' ? (
+          <p className="mb-4 text-sm text-amber-300">
+            Product tags are not connected to the catalog API yet. Added tags stay in this browser session only and do not appear on products.
+          </p>
+        ) : null}
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <h3 className="font-display text-sm font-bold tracking-wide text-shield">{config.listTitle}</h3>
           <div className="flex flex-wrap items-center gap-2">

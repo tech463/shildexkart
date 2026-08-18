@@ -40,7 +40,9 @@ const AUTH_STORAGE_KEY = 'shieldx-admin-auth'
 
 function readStoredAuth() {
   try {
-    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY)
+    const raw =
+      window.localStorage.getItem(AUTH_STORAGE_KEY) ||
+      window.sessionStorage.getItem(AUTH_STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!parsed?.email) return null
@@ -207,14 +209,29 @@ export default function App() {
   useEffect(() => {
     if (!authUser) {
       window.localStorage.removeItem(AUTH_STORAGE_KEY)
+      window.sessionStorage.removeItem(AUTH_STORAGE_KEY)
       return
     }
+    const payload = JSON.stringify(authUser)
     if (authUser.remember) {
-      window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser))
+      window.localStorage.setItem(AUTH_STORAGE_KEY, payload)
+      window.sessionStorage.removeItem(AUTH_STORAGE_KEY)
     } else {
+      window.sessionStorage.setItem(AUTH_STORAGE_KEY, payload)
       window.localStorage.removeItem(AUTH_STORAGE_KEY)
     }
   }, [authUser])
+
+  useEffect(() => {
+    const onExpired = () => {
+      setAuthUser(null)
+      if (!window.location.pathname.includes('/login')) {
+        navigate('/login', { replace: true })
+      }
+    }
+    window.addEventListener('shieldx-admin-auth-expired', onExpired)
+    return () => window.removeEventListener('shieldx-admin-auth-expired', onExpired)
+  }, [navigate])
 
   const handleAuthenticated = ({ email, remember, token }) => {
     setAuthUser({ email, remember: Boolean(remember), token })

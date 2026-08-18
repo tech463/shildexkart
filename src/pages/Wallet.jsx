@@ -1,7 +1,56 @@
+import { useEffect, useState } from 'react'
+import { fetchPaymentsAPI } from '../services/orderService'
+
+function money(value) {
+  return Number(value || 0)
+}
+
+function formatDate(value) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleString('en-IN')
+}
+
 export default function Wallet({ onNavigate }) {
-  const totalEarned = 0
-  const totalPayments = 0
-  const recentPayments = []
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [totalEarned, setTotalEarned] = useState(0)
+  const [totalPayments, setTotalPayments] = useState(0)
+  const [recentPayments, setRecentPayments] = useState([])
+
+  const load = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetchPaymentsAPI({ page: 1, limit: 100 })
+      const rows = Array.isArray(res?.data) ? res.data : []
+      const successful = rows.filter((row) => {
+        const status = String(row.status || '').toLowerCase()
+        return status === 'paid' || status === 'captured' || status === 'cod_pending'
+      })
+      setTotalEarned(successful.reduce((sum, row) => sum + money(row.amount), 0))
+      setTotalPayments(successful.length)
+      setRecentPayments(rows.slice(0, 8).map((row) => ({
+        id: row.id,
+        order: row.order?.order_number || `#${row.order_id}`,
+        amount: `₹${money(row.amount).toLocaleString('en-IN')}`,
+        type: `${row.method || 'payment'} · ${row.status || ''}`.trim(),
+        date: formatDate(row.paid_at || row.created_at),
+      })))
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || 'Failed to load wallet payments.')
+      setTotalEarned(0)
+      setTotalPayments(0)
+      setRecentPayments([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+  }, [])
 
   return (
     <section id="page-wallet" className="page-view">
@@ -22,6 +71,9 @@ export default function Wallet({ onNavigate }) {
         </nav>
       </div>
 
+      {error ? <div className="vendor-form-error mb-4">{error}</div> : null}
+      {loading ? <p className="mb-4 text-sm text-slate-400">Loading payments...</p> : null}
+
       <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="neo-card glass-card wallet-stat-card p-5" style={{ '--accent': '#34d399' }}>
           <span className="card-accent" aria-hidden="true" />
@@ -29,7 +81,7 @@ export default function Wallet({ onNavigate }) {
           <p className="mt-2 text-3xl font-bold text-slate-100">
             ₹{totalEarned.toLocaleString('en-IN')}
           </p>
-          <p className="mt-3 text-xs font-medium text-emerald-400">Net after platform commission</p>
+          <p className="mt-3 text-xs font-medium text-emerald-400">Paid and COD orders processed</p>
         </div>
 
         <div className="neo-card glass-card wallet-stat-card p-5" style={{ '--accent': '#00A3FF' }}>
@@ -42,7 +94,12 @@ export default function Wallet({ onNavigate }) {
 
       <div className="neo-card glass-card p-5" style={{ '--accent': '#34d399' }}>
         <span className="card-accent" aria-hidden="true" />
-        <h3 className="mb-6 font-display text-sm font-bold tracking-wide text-shield">Recent Payments</h3>
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <h3 className="font-display text-sm font-bold tracking-wide text-shield">Recent Payments</h3>
+          <button type="button" onClick={load} className="btn-glass rounded-lg px-3 py-1.5 text-xs font-medium">
+            Refresh
+          </button>
+        </div>
 
         {recentPayments.length === 0 ? (
           <div className="wallet-empty-state">
@@ -64,7 +121,7 @@ export default function Wallet({ onNavigate }) {
                   <tr key={payment.id}>
                     <td className="font-medium text-slate-200">{payment.order}</td>
                     <td className="text-slate-300">{payment.amount}</td>
-                    <td className="text-slate-400">{payment.type}</td>
+                    <td className="text-slate-400 capitalize">{payment.type}</td>
                     <td className="text-slate-400">{payment.date}</td>
                   </tr>
                 ))}

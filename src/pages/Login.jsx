@@ -22,7 +22,7 @@ export default function Login({ onAuthenticated }) {
   const dispatch = useDispatch()
   const auth = useSelector((state) => state.auth)
 
-  const [email, setEmail] = useState('superadmin@shieldxkart.com')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [remember, setRemember] = useState(true)

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { USERS_DATA } from '../data/users'
+import { fetchUsersAPI, setUserStatusAPI } from '../services/userService'
 
 function Icon({ path, paths: pathList, className = 'h-4 w-4' }) {
   const segments = pathList || (path ? path.split(' M').map((segment, index) => (index === 0 ? segment : `M${segment}`)) : [])
@@ -414,14 +414,63 @@ function DeleteUserModal({ open, onClose, onConfirm, user }) {
 }
 
 export default function Users({ onNavigate }) {
-  const [users, setUsers] = useState(() => USERS_DATA.map((user) => ({ ...user })))
+  const [users, setUsers] = useState([])
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingUser, setEditingUser] = useState(null)
-  const [deletingUser, setDeletingUser] = useState(null)
+  const [loadingUsers, setLoadingUsers] = useState(false)
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+  const [toastSuccess, setToastSuccess] = useState('')
+  const [toastError, setToastError] = useState('')
+
+  useEffect(() => {
+    if (!toastSuccess && !toastError) return undefined
+    const t = setTimeout(() => {
+      setToastSuccess('')
+      setToastError('')
+    }, 2500)
+    return () => clearTimeout(t)
+  }, [toastSuccess, toastError])
+
+  const normalizeUsers = (items = []) => items.map((u, idx) => {
+    const name = u?.name ?? ''
+    const createdRaw = u?.created_at ?? u?.created ?? u?.createdAt
+    const updatedRaw = u?.updated_at ?? u?.updated ?? u?.updatedAt
+    return {
+      id: u?.id ?? u?._id ?? Date.now() + idx,
+      name,
+      email: u?.email ?? '',
+      phone: u?.phone ?? u?.phoneNumber ?? u?.mobile ?? '',
+      avatar: getInitials(name),
+      color: AVATAR_COLORS[idx % AVATAR_COLORS.length],
+      role: 'User',
+      active: Boolean(u?.is_active ?? u?.active),
+      created: createdRaw ? formatTimestamp(new Date(createdRaw)) : '',
+      updated: updatedRaw ? formatTimestamp(new Date(updatedRaw)) : '',
+    }
+  })
+
+  const loadUsers = async () => {
+    setLoadingUsers(true)
+    setToastError('')
+    try {
+      const data = await fetchUsersAPI()
+      const usersData = data?.users ?? data?.data?.users ?? data?.result?.users ?? []
+      setUsers(normalizeUsers(usersData))
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Failed to load users.'
+      setToastError(msg)
+      setUsers([])
+    } finally {
+      setLoadingUsers(false)
+    }
+  }
+
+  useEffect(() => {
+    loadUsers()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const filteredUsers = useMemo(() => {
     const search = query.trim().toLowerCase()
@@ -437,75 +486,25 @@ export default function Users({ onNavigate }) {
     setStatus('')
     setStartDate('')
     setEndDate('')
+    loadUsers()
   }
 
-  const closeModal = () => {
-    setModalOpen(false)
-    setEditingUser(null)
-  }
-
-  const openAddModal = () => {
-    setEditingUser(null)
-    setModalOpen(true)
-  }
-
-  const openEditModal = (user) => {
-    setEditingUser(user)
-    setModalOpen(true)
-  }
-
-  const toggleUser = (id) => {
-    setUsers((current) => current.map((user) => (
-      user.id === id ? { ...user, active: !user.active } : user
-    )))
-  }
-
-  const deleteUser = (id) => {
-    setUsers((current) => current.filter((user) => user.id !== id))
-    setDeletingUser(null)
-  }
-
-  const addUser = (payload) => {
-    const stamp = formatTimestamp()
-    setUsers((current) => [
-      {
-        id: Date.now(),
-        name: payload.name,
-        email: payload.email,
-        phone: payload.phone,
-        avatar: getInitials(payload.name),
-        color: AVATAR_COLORS[current.length % AVATAR_COLORS.length],
-        role: 'User',
-        created: stamp,
-        updated: stamp,
-        active: payload.active,
-      },
-      ...current,
-    ])
-    closeModal()
-  }
-
-  const updateUser = (payload) => {
-    const stamp = formatTimestamp()
-    setUsers((current) => current.map((user) => (
-      user.id === payload.id
-        ? {
-          ...user,
-          name: payload.name,
-          email: payload.email,
-          phone: payload.phone,
-          avatar: getInitials(payload.name),
-          active: payload.active,
-          updated: stamp,
-        }
-        : user
-    )))
-    closeModal()
-  }
-
-  const handleModalSubmit = (payload) => {
-    if (editingUser) updateUser(payload)
-    else addUser(payload)
+  const toggleUser = async (id) => {
+    const user = users.find((item) => item.id === id)
+    if (!user || statusUpdatingId) return
+    const newActive = !user.active
+    setStatusUpdatingId(id)
+    setToastError('')
+    try {
+      const res = await setUserStatusAPI({ id, isActive: newActive })
+      setToastSuccess(res?.message || (newActive ? 'User Activated.' : 'User Deactivated.'))
+      await loadUsers()
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Status update failed.'
+      setToastError(msg)
+    } finally {
+      setStatusUpdatingId(null)
+    }
   }
 
   return (
@@ -591,16 +590,12 @@ export default function Users({ onNavigate }) {
             >
               <Icon path={paths.refresh} />
             </button>
-            <button
-              type="button"
-              className="btn-add"
-              aria-label="Add user"
-              onClick={openAddModal}
-            >
-              <Icon path={paths.plus} className="h-5 w-5" />
-            </button>
           </div>
         </div>
+
+        {toastSuccess ? <div className="notif-toast mb-4">{toastSuccess}</div> : null}
+        {toastError ? <div className="vendor-form-error mb-4">{toastError}</div> : null}
+        {loadingUsers ? <p className="mb-4 text-sm text-slate-400">Loading users...</p> : null}
 
         <div className="overflow-x-auto rounded-xl border border-white/5">
           <table className="vendors-table data-table w-full min-w-[1100px] text-left text-sm">
@@ -646,7 +641,12 @@ export default function Users({ onNavigate }) {
                   <td>
                     <div className="flex items-center gap-2">
                       <label className="toggle-switch">
-                        <input type="checkbox" checked={user.active} onChange={() => toggleUser(user.id)} />
+                        <input
+                          type="checkbox"
+                          checked={user.active}
+                          disabled={loadingUsers || statusUpdatingId === user.id}
+                          onChange={() => toggleUser(user.id)}
+                        />
                         <span className="toggle-slider" />
                       </label>
                       <span className={`text-xs font-semibold ${user.active ? 'text-emerald-400' : 'text-slate-500'}`}>
@@ -670,22 +670,6 @@ export default function Users({ onNavigate }) {
                       >
                         <Icon path={paths.view} />
                       </button>
-                      <button
-                        type="button"
-                        className="action-btn"
-                        aria-label={`Edit ${user.name}`}
-                        onClick={() => openEditModal(user)}
-                      >
-                        <Icon path={paths.edit} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeletingUser(user)}
-                        className="action-btn action-btn-danger"
-                        aria-label={`Delete ${user.name}`}
-                      >
-                        <Icon path={paths.delete} />
-                      </button>
                     </div>
                   </td>
                 </tr>
@@ -694,19 +678,6 @@ export default function Users({ onNavigate }) {
           </table>
         </div>
       </div>
-
-      <UserModal
-        open={modalOpen}
-        onClose={closeModal}
-        onSubmit={handleModalSubmit}
-        user={editingUser}
-      />
-      <DeleteUserModal
-        open={Boolean(deletingUser)}
-        onClose={() => setDeletingUser(null)}
-        onConfirm={deleteUser}
-        user={deletingUser}
-      />
     </section>
   )
 }

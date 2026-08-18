@@ -22,7 +22,9 @@ function relativeTime(value) {
 
 function getAdminToken() {
   try {
-    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY)
+    const raw =
+      window.localStorage.getItem(AUTH_STORAGE_KEY) ||
+      window.sessionStorage.getItem(AUTH_STORAGE_KEY)
     if (!raw) return ''
     return JSON.parse(raw)?.token || ''
   } catch {

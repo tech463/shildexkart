@@ -715,14 +715,6 @@ export default function AllUsers({ onNavigate }) {
             >
               <Icon path={paths.refresh} />
             </button>
-            <button
-              type="button"
-              className="btn-add"
-              aria-label="Add user"
-              onClick={openAddModal}
-            >
-              <Icon path={paths.plus} className="h-5 w-5" />
-            </button>
           </div>
         </div>
 
@@ -805,22 +797,6 @@ export default function AllUsers({ onNavigate }) {
                         onClick={() => onNavigate?.('user-insights', member)}
                       >
                         <Icon path={paths.view} />
-                      </button>
-                      <button
-                        type="button"
-                        className="action-btn"
-                        aria-label={`Edit ${member.name}`}
-                        onClick={() => openEditModal(member)}
-                      >
-                        <Icon path={paths.edit} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openDeleteModal(member)}
-                        className="action-btn action-btn-danger"
-                        aria-label={`Delete ${member.name}`}
-                      >
-                        <Icon path={paths.delete} />
                       </button>
                     </div>
                   </td>

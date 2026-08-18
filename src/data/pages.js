@@ -62,12 +62,7 @@ export const PAGE_CONFIGS = {
     accent: '#f472b6',
     nameLabel: 'Tag Name',
     columns: ['name', 'products', 'color'],
-    rows: [
-      { id: 1, name: 'Best Seller', products: 45, color: 'Green', created: '16-July-2026 10:25 AM', updated: '20-July-2026 12:15 PM', active: true },
-      { id: 2, name: 'New Arrival', products: 31, color: 'Blue', created: '15-July-2026 02:40 PM', updated: '19-July-2026 03:50 PM', active: true },
-      { id: 3, name: 'Sale', products: 27, color: 'Red', created: '13-July-2026 04:10 PM', updated: '18-July-2026 09:25 AM', active: true },
-      { id: 4, name: 'Limited', products: 12, color: 'Purple', created: '11-July-2026 08:20 AM', updated: '16-July-2026 05:35 PM', active: true },
-    ],
+    rows: [],
   },
   banners: {
     title: 'Banners',
