@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
+import TablePagination from '../components/TablePagination'
+import usePagination from '../hooks/usePagination'
 import {
   fetchVendorsAPI,
   setVendorApprovalStatusAPI,
@@ -534,6 +536,8 @@ export default function Vendors({ onNavigate }) {
     ))
   }, [vendors, query, status, startDate, endDate])
 
+  const pagination = usePagination(filteredVendors)
+
   const refresh = () => {
     setQuery('')
     setStatus('')
@@ -783,10 +787,10 @@ export default function Vendors({ onNavigate }) {
                   <td colSpan={10} className="py-8 text-center text-slate-400">Loading vendors...</td>
                 </tr>
               ) : (
-                filteredVendors.map((vendor, index) => (
+                pagination.pageItems.map((vendor, index) => (
                 <tr key={vendor.id}>
                   <td><input type="checkbox" className="rounded border-white/20 bg-white/5" /></td>
-                  <td className="text-slate-400">{index + 1}</td>
+                  <td className="text-slate-400">{pagination.rangeStart + index}</td>
                   <td>
                     <div className="flex items-center gap-3">
                       <div className={`avatar-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${vendor.color}`}>
@@ -896,6 +900,15 @@ export default function Vendors({ onNavigate }) {
             </tbody>
           </table>
         </div>
+
+        {!loadingVendors && filteredVendors.length > 0 ? (
+          <TablePagination
+            {...pagination}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.changePageSize}
+            itemLabel="vendors"
+          />
+        ) : null}
       </div>
 
       <VendorModal

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchUsersAPI, setUserStatusAPI } from '../services/userService'
+import TablePagination from '../components/TablePagination'
+import usePagination from '../hooks/usePagination'
 
 function Icon({ path, paths: pathList, className = 'h-4 w-4' }) {
   const segments = pathList || (path ? path.split(' M').map((segment, index) => (index === 0 ? segment : `M${segment}`)) : [])
@@ -481,6 +483,8 @@ export default function Users({ onNavigate }) {
     ))
   }, [users, query, status, startDate, endDate])
 
+  const pagination = usePagination(filteredUsers)
+
   const refresh = () => {
     setQuery('')
     setStatus('')
@@ -619,10 +623,10 @@ export default function Users({ onNavigate }) {
                     No users found for the selected filters.
                   </td>
                 </tr>
-              ) : filteredUsers.map((user, index) => (
+              ) : pagination.pageItems.map((user, index) => (
                 <tr key={user.id}>
                   <td><input type="checkbox" className="rounded border-white/20 bg-white/5" /></td>
-                  <td className="text-slate-400">{index + 1}</td>
+                  <td className="text-slate-400">{pagination.rangeStart + index}</td>
                   <td>
                     <div className="flex items-center gap-3">
                       <div className={`avatar-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${user.color}`}>
@@ -677,6 +681,15 @@ export default function Users({ onNavigate }) {
             </tbody>
           </table>
         </div>
+
+        {filteredUsers.length > 0 ? (
+          <TablePagination
+            {...pagination}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.changePageSize}
+            itemLabel="users"
+          />
+        ) : null}
       </div>
     </section>
   )

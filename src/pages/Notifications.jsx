@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
+import TablePagination from '../components/TablePagination'
+import usePagination from '../hooks/usePagination'
 import {
   ALERT_TYPES,
   AUDIENCE_OPTIONS,
@@ -318,8 +320,10 @@ export default function Notifications({ onNavigate }) {
     return activeList.filter((item) => !item.read)
   }, [activeList, readFilter])
 
-  const allVisibleSelected = filteredList.length > 0
-    && filteredList.every((item) => selectedIds.includes(item.id))
+  const pagination = usePagination(filteredList)
+
+  const allVisibleSelected = pagination.pageItems.length > 0
+    && pagination.pageItems.every((item) => selectedIds.includes(item.id))
 
   const updateField = (key) => (event) => {
     const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value
@@ -381,10 +385,10 @@ export default function Notifications({ onNavigate }) {
 
   const toggleSelectAll = () => {
     if (allVisibleSelected) {
-      setSelectedIds((current) => current.filter((id) => !filteredList.some((item) => item.id === id)))
+      setSelectedIds((current) => current.filter((id) => !pagination.pageItems.some((item) => item.id === id)))
       return
     }
-    setSelectedIds((current) => [...new Set([...current, ...filteredList.map((item) => item.id)])])
+    setSelectedIds((current) => [...new Set([...current, ...pagination.pageItems.map((item) => item.id)])])
   }
 
   const toggleSelect = (id) => {
@@ -705,7 +709,7 @@ export default function Notifications({ onNavigate }) {
                     {historyTab === 'sent' ? 'No notifications dispatched yet.' : 'No scheduled messages yet.'}
                   </td>
                 </tr>
-              ) : filteredList.map((item, index) => (
+              ) : pagination.pageItems.map((item, index) => (
                 <tr key={item.id}>
                   <td>
                     <input
@@ -715,7 +719,7 @@ export default function Notifications({ onNavigate }) {
                       aria-label={`Select ${item.title}`}
                     />
                   </td>
-                  <td className="text-slate-400">{index + 1}</td>
+                  <td className="text-slate-400">{pagination.rangeStart + index}</td>
                   <td className="min-w-[220px]">
                     <p className="font-medium text-slate-200">{item.title}</p>
                     <p className="text-xs text-slate-500 line-clamp-1">{item.body}</p>
@@ -754,6 +758,15 @@ export default function Notifications({ onNavigate }) {
             </tbody>
           </table>
         </div>
+
+        {filteredList.length > 0 ? (
+          <TablePagination
+            {...pagination}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.changePageSize}
+            itemLabel="notifications"
+          />
+        ) : null}
       </div>
 
       <NotificationViewModal open={Boolean(viewing)} onClose={() => setViewing(null)} item={viewing} />

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { errMsg, fetchAdminAddressesAPI } from '../services/orderService'
 
+const PAGE_LIMIT = 20
+
 export default function Addresses() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -12,7 +14,7 @@ export default function Addresses() {
     setLoading(true)
     setError('')
     try {
-      const res = await fetchAdminAddressesAPI({ page, limit: 20 })
+      const res = await fetchAdminAddressesAPI({ page, limit: PAGE_LIMIT })
       setRows(res?.data || [])
       setTotalPages(res?.totalPages || 1)
     } catch (err) {
@@ -42,6 +44,7 @@ export default function Addresses() {
         <table className="min-w-full text-left text-sm">
           <thead className="bg-slate-950/80 text-xs uppercase tracking-wide text-slate-500">
             <tr>
+              <th className="px-4 py-3">S.No</th>
               <th className="px-4 py-3">Customer</th>
               <th className="px-4 py-3">Address</th>
               <th className="px-4 py-3">Phone</th>
@@ -50,12 +53,13 @@ export default function Addresses() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-500">Loading...</td></tr>
+              <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">Loading...</td></tr>
             ) : !rows.length ? (
-              <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-500">No addresses yet.</td></tr>
+              <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">No addresses yet.</td></tr>
             ) : (
-              rows.map((row) => (
+              rows.map((row, index) => (
                 <tr key={row.id} className="border-t border-slate-800">
+                  <td className="px-4 py-3 text-slate-400">{(page - 1) * PAGE_LIMIT + index + 1}</td>
                   <td className="px-4 py-3 text-slate-200">
                     <div className="font-semibold">{row.user?.name || row.full_name}</div>
                     <div className="text-xs text-slate-500">{row.user?.email}</div>
@@ -78,24 +82,28 @@ export default function Addresses() {
         </table>
       </div>
 
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
-          className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 disabled:opacity-40"
-        >
-          Prev
-        </button>
-        <span className="text-sm text-slate-400">Page {page} / {totalPages}</span>
-        <button
-          type="button"
-          disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
-          className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 disabled:opacity-40"
-        >
-          Next
-        </button>
+      <div className="table-pagination" style={{ marginTop: 0, borderTop: 'none', paddingTop: 0 }}>
+        <div className="table-pagination-info">
+          Page <strong>{page}</strong> of <strong>{totalPages}</strong>
+        </div>
+        <div className="table-pagination-controls">
+          <button
+            type="button"
+            className="table-page-btn"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Prev
+          </button>
+          <button
+            type="button"
+            className="table-page-btn"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   )

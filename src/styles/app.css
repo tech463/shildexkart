@@ -632,6 +632,90 @@
       box-shadow: 0 0 0 3px rgba(0, 163, 255, 0.12);
     }
 
+    /* ── Table pagination ── */
+    .table-pagination {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .table-pagination-info {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.75rem;
+      color: rgba(192, 192, 192, 0.6);
+    }
+    .table-pagination-info strong {
+      color: #e2e8f0;
+      font-weight: 700;
+    }
+    .table-pagination-size {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .table-pagination-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .table-page-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2rem;
+      height: 2rem;
+      padding: 0 0.5rem;
+      border-radius: 0.6rem;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.04);
+      color: rgba(224, 224, 224, 0.85);
+      font-size: 0.75rem;
+      font-weight: 600;
+      transition: background 0.2s, border-color 0.2s, color 0.2s;
+    }
+    .table-page-btn:hover:not(:disabled) {
+      background: rgba(0, 163, 255, 0.14);
+      border-color: rgba(0, 163, 255, 0.4);
+      color: #e0f4ff;
+    }
+    .table-page-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .table-page-btn-active,
+    .table-page-btn-active:hover:not(:disabled) {
+      background: linear-gradient(140deg, rgba(0, 163, 255, 0.9), rgba(0, 110, 210, 0.9));
+      border-color: rgba(180, 230, 255, 0.5);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(0, 120, 220, 0.35);
+    }
+    .table-page-gap {
+      padding: 0 0.15rem;
+      font-size: 0.75rem;
+      color: rgba(192, 192, 192, 0.5);
+    }
+    @media (max-width: 640px) {
+      .table-pagination {
+        justify-content: center;
+      }
+      .table-pagination-info {
+        justify-content: center;
+        width: 100%;
+      }
+      .table-pagination-controls {
+        justify-content: center;
+        width: 100%;
+      }
+    }
+
     .vendors-table thead th {
       background: rgba(255, 255, 255, 0.04);
       font-size: 0.65rem;

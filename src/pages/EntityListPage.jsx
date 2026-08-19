@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import MainCategoryModal from '../components/MainCategoryModal'
+import TablePagination from '../components/TablePagination'
+import usePagination from '../hooks/usePagination'
 import { PAGE_CONFIGS } from '../data/pages'
 import {
   createMainCategory,
@@ -532,6 +534,8 @@ export default function EntityListPage({ pageId, onNavigate }) {
     ))
   }, [rows, query, status, startDate, endDate])
 
+  const pagination = usePagination(filteredRows)
+
   // Hooks must be called unconditionally; these memos are used by category modal below.
   const mainCategoryOptions = useMemo(
     () => PAGE_CONFIGS['main-category']?.rows?.map((row) => row.name) || [],
@@ -1040,10 +1044,10 @@ export default function EntityListPage({ pageId, onNavigate }) {
                     No records found for the selected filters.
                   </td>
                 </tr>
-              ) : filteredRows.map((row, index) => (
+              ) : pagination.pageItems.map((row, index) => (
                 <tr key={row.id}>
                   <td><input type="checkbox" className="rounded border-white/20 bg-white/5" /></td>
-                  <td className="text-slate-400">{index + 1}</td>
+                  <td className="text-slate-400">{pagination.rangeStart + index}</td>
                   {config.columns.map((column) => (
                     <td key={column} className={column === 'name' ? 'font-semibold text-slate-200' : 'text-slate-400'}>
                       {row[column] ?? '—'}
@@ -1095,6 +1099,15 @@ export default function EntityListPage({ pageId, onNavigate }) {
             </tbody>
           </table>
         </div>
+
+        {filteredRows.length > 0 ? (
+          <TablePagination
+            {...pagination}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.changePageSize}
+            itemLabel="records"
+          />
+        ) : null}
       </div>
 
       {useCategoryModal ? (

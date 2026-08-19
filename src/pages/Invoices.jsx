@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
+import TablePagination from '../components/TablePagination'
+import usePagination from '../hooks/usePagination'
 import {
   deleteInvoiceAPI,
   errMsg,
@@ -295,8 +297,10 @@ export default function Invoices({ onNavigate }) {
 
   const filteredInvoices = useMemo(() => invoices, [invoices])
 
-  const allVisibleSelected = filteredInvoices.length > 0
-    && filteredInvoices.every((row) => selectedIds.includes(row.id))
+  const pagination = usePagination(filteredInvoices)
+
+  const allVisibleSelected = pagination.pageItems.length > 0
+    && pagination.pageItems.every((row) => selectedIds.includes(row.id))
 
   const goOrder = (invoice) => {
     if (!invoice?.order_id) return
@@ -522,10 +526,10 @@ export default function Invoices({ onNavigate }) {
                     checked={allVisibleSelected}
                     onChange={() => {
                       if (allVisibleSelected) {
-                        setSelectedIds((current) => current.filter((id) => !filteredInvoices.some((row) => row.id === id)))
+                        setSelectedIds((current) => current.filter((id) => !pagination.pageItems.some((row) => row.id === id)))
                         return
                       }
-                      setSelectedIds((current) => [...new Set([...current, ...filteredInvoices.map((row) => row.id)])])
+                      setSelectedIds((current) => [...new Set([...current, ...pagination.pageItems.map((row) => row.id)])])
                     }}
                     aria-label="Select all invoices"
                   />
@@ -553,7 +557,7 @@ export default function Invoices({ onNavigate }) {
                     No invoices yet. Place an order or click Sync from Orders.
                   </td>
                 </tr>
-              ) : filteredInvoices.map((row, index) => (
+              ) : pagination.pageItems.map((row, index) => (
                 <tr key={row.id}>
                   <td>
                     <input
@@ -565,7 +569,7 @@ export default function Invoices({ onNavigate }) {
                       aria-label={`Select ${row.invoiceId}`}
                     />
                   </td>
-                  <td className="whitespace-nowrap text-slate-400">{index + 1}</td>
+                  <td className="whitespace-nowrap text-slate-400">{pagination.rangeStart + index}</td>
                   <td className="whitespace-nowrap">
                     <button
                       type="button"
@@ -635,6 +639,15 @@ export default function Invoices({ onNavigate }) {
             </tbody>
           </table>
         </div>
+
+        {!loading && filteredInvoices.length > 0 ? (
+          <TablePagination
+            {...pagination}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.changePageSize}
+            itemLabel="invoices"
+          />
+        ) : null}
       </div>
 
       <InvoiceViewModal

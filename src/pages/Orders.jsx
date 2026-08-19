@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import TablePagination from '../components/TablePagination'
+import usePagination from '../hooks/usePagination'
 import {
   createShipmentAPI,
   errMsg,
@@ -127,6 +129,8 @@ export default function Orders() {
     return base
   }, [orders])
 
+  const pagination = usePagination(orders)
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -186,6 +190,7 @@ export default function Orders() {
           <table className="min-w-full text-left text-sm">
             <thead className="bg-slate-950/80 text-xs uppercase tracking-wide text-slate-500">
               <tr>
+                <th className="px-4 py-3">S.No</th>
                 <th className="px-4 py-3">Order</th>
                 <th className="px-4 py-3">Customer</th>
                 <th className="px-4 py-3">Payment</th>
@@ -195,16 +200,17 @@ export default function Orders() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">Loading...</td></tr>
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">Loading...</td></tr>
               ) : !orders.length ? (
-                <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">No orders found.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">No orders found.</td></tr>
               ) : (
-                orders.map((order) => (
+                pagination.pageItems.map((order, index) => (
                   <tr
                     key={order.id}
                     onClick={() => openOrder(order.id)}
                     className={`cursor-pointer border-t border-slate-800 hover:bg-slate-800/40 ${selected?.id === order.id ? 'bg-slate-800/60' : ''}`}
                   >
+                    <td className="px-4 py-3 text-slate-400">{pagination.rangeStart + index}</td>
                     <td className="px-4 py-3 font-semibold text-sky-400">{order.order_number}</td>
                     <td className="px-4 py-3 text-slate-300">
                       <div>{order.shipping_name}</div>
@@ -220,6 +226,17 @@ export default function Orders() {
               )}
             </tbody>
           </table>
+
+          {!loading && orders.length > 0 ? (
+            <div className="px-4 pb-4">
+              <TablePagination
+                {...pagination}
+                onPageChange={pagination.setPage}
+                onPageSizeChange={pagination.changePageSize}
+                itemLabel="orders"
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">

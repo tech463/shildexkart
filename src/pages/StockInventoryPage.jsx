@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
+import TablePagination from '../components/TablePagination'
+import usePagination from '../hooks/usePagination'
 import { STOCK_PAGE_TYPES } from '../data/stockInventory'
 import {
   deleteProductAPI,
@@ -386,6 +388,8 @@ export default function StockInventoryPage({ stockType = 'in-stock', onNavigate 
   const [toastSuccess, setToastSuccess] = useState('')
   const [toastError, setToastError] = useState('')
 
+  const pagination = usePagination(items)
+
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), 350)
     return () => clearTimeout(timer)
@@ -649,11 +653,11 @@ export default function StockInventoryPage({ stockType = 'in-stock', onNavigate 
                     </div>
                   </td>
                 </tr>
-              ) : items.map((item, index) => {
+              ) : pagination.pageItems.map((item, index) => {
                 const fill = getStockFill(item)
                 return (
                   <tr key={item.id}>
-                    <td className="text-slate-400">{index + 1}</td>
+                    <td className="text-slate-400">{pagination.rangeStart + index}</td>
                     <td>
                       <div className="flex items-center gap-3">
                         <div className="product-thumb">
@@ -733,6 +737,15 @@ export default function StockInventoryPage({ stockType = 'in-stock', onNavigate 
             </tbody>
           </table>
         </div>
+
+        {!loading && items.length > 0 ? (
+          <TablePagination
+            {...pagination}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.changePageSize}
+            itemLabel="products"
+          />
+        ) : null}
       </div>
 
       <StockViewModal
