@@ -14,6 +14,7 @@ import {
   deleteProductAPI,
   fetchProductByIdAPI,
   fetchProductsAPI,
+  repairProductImagesAPI,
   setProductApprovalAPI,
   setProductStatusAPI,
 } from '../services/productService'
@@ -742,7 +743,31 @@ export default function Products({ onNavigate }) {
   }, [query, approvalStatus])
 
   useEffect(() => {
-    loadProducts()
+    let alive = true
+
+    const boot = async () => {
+      loadProducts()
+
+      const repairKey = 'shieldx-product-image-repair-v1'
+      try {
+        if (!sessionStorage.getItem(repairKey)) {
+          sessionStorage.setItem(repairKey, '1')
+          const res = await repairProductImagesAPI(150)
+          if (!alive) return
+          if (res?.data?.repairedCount > 0) {
+            await loadProducts()
+            setToastSuccess(`Repaired ${res.data.repairedCount} product image(s).`)
+          }
+        }
+      } catch {
+        // Non-fatal — list already loaded
+      }
+    }
+
+    boot()
+    return () => {
+      alive = false
+    }
   }, [approvalStatus]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredProducts = useMemo(() => {
@@ -1159,16 +1184,26 @@ export default function Products({ onNavigate }) {
                       aria-label={`Select ${product.name}`}
                     />
                   </td>
-                  <td className="text-slate-400">{index + 1}</td>
-                  <td><input type="checkbox" className="rounded border-white/20 bg-white/5" /></td>
                   <td className="text-slate-400">{pagination.rangeStart + index}</td>
                   <td>
                     <div className="product-thumb">
                       {product.imageUrl ? (
-                        <img src={product.imageUrl} alt={product.name} />
-                      ) : (
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">N/A</span>
-                      )}
+                        <img
+                          src={product.imageUrl}
+                          alt={product.name}
+                          onError={(event) => {
+                            event.currentTarget.style.display = 'none'
+                            const fallback = event.currentTarget.nextElementSibling
+                            if (fallback) fallback.hidden = false
+                          }}
+                        />
+                      ) : null}
+                      <span
+                        className="text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                        hidden={Boolean(product.imageUrl)}
+                      >
+                        N/A
+                      </span>
                     </div>
                   </td>
                   <td className="font-semibold text-slate-200">{product.name}</td>

@@ -76,6 +76,11 @@ export const bulkDeleteProductsAPI = async (ids = []) => {
   return response.data
 }
 
+export const repairProductImagesAPI = async (limit = 100) => {
+  const response = await api.post('/v1/product/repair-images', { limit })
+  return response.data
+}
+
 export const downloadProductBulkSampleAPI = async () => {
   const response = await api.get('/v1/product/bulk-sample', {
     responseType: 'blob',
