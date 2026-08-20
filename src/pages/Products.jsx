@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import ProductExcelUploadModal from '../components/ProductExcelUploadModal'
+import { useRowSelection } from '../hooks/useRowSelection'
 import {
   APPROVAL_STATUS_OPTIONS,
   VENDOR_STATUS_OPTIONS,
 } from '../data/products'
 import { PAGE_CONFIGS } from '../data/pages'
 import {
+  bulkDeleteProductsAPI,
   deleteProductAPI,
   fetchProductByIdAPI,
   fetchProductsAPI,
@@ -696,6 +698,8 @@ export default function Products({ onNavigate }) {
   const [editingProduct, setEditingProduct] = useState(null)
   const [viewingProduct, setViewingProduct] = useState(null)
   const [deletingProduct, setDeletingProduct] = useState(null)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
   const [approvalUpdatingId, setApprovalUpdatingId] = useState(null)
@@ -749,7 +753,19 @@ export default function Products({ onNavigate }) {
     ))
   }, [products, query, vendorStatus, approvalStatus, startDate, endDate])
 
+  const {
+    selectedVisibleIds,
+    selectedCount,
+    allSelected,
+    someSelected,
+    isSelected,
+    toggleOne,
+    toggleAll,
+    clearSelection,
+  } = useRowSelection(filteredProducts)
+
   const refresh = () => {
+    clearSelection()
     setQuery('')
     setVendorStatus('')
     setApprovalStatus('')
@@ -820,11 +836,19 @@ export default function Products({ onNavigate }) {
     setToastError('')
     try {
       const res = await setProductApprovalAPI(id, approvalValue)
+      const isApproved = approvalValue === 'approved'
       if (res?.data) {
         upsertProductRow(res.data)
       } else {
         setProducts((current) => current.map((item) => (
-          item.id === id ? { ...item, approvalStatus: capitalizeStatus(approvalValue) } : item
+          item.id === id
+            ? {
+              ...item,
+              approvalStatus: capitalizeStatus(approvalValue),
+              adminActive: isApproved,
+              active: isApproved,
+            }
+            : item
         )))
       }
       setToastSuccess(res?.message || `Product marked as ${approvalValue}.`)
@@ -848,6 +872,28 @@ export default function Products({ onNavigate }) {
       setToastError(apiErrorMessage(err, 'Failed to delete product.'))
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  const bulkDeleteProducts = async () => {
+    const ids = selectedVisibleIds
+    if (!ids.length || bulkDeleting) return
+
+    setBulkDeleting(true)
+    setToastError('')
+    try {
+      const res = await bulkDeleteProductsAPI(ids)
+      const deletedIds = Array.isArray(res?.deletedIds) && res.deletedIds.length
+        ? res.deletedIds
+        : ids
+      setProducts((current) => current.filter((product) => !deletedIds.includes(product.id)))
+      clearSelection()
+      setBulkDeleteOpen(false)
+      setToastSuccess(res?.message || `${deletedIds.length} product(s) deleted.`)
+    } catch (err) {
+      setToastError(apiErrorMessage(err, 'Failed to delete selected products.'))
+    } finally {
+      setBulkDeleting(false)
     }
   }
 
@@ -1029,11 +1075,49 @@ export default function Products({ onNavigate }) {
         {toastSuccess ? <div className="notif-toast mb-4">{toastSuccess}</div> : null}
         {toastError ? <div className="vendor-form-error mb-4">{toastError}</div> : null}
 
+        {selectedCount > 0 ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3">
+            <span className="text-sm font-medium text-slate-200">
+              {selectedCount} product{selectedCount === 1 ? '' : 's'} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="vendor-btn-cancel px-4 py-2 text-xs"
+                disabled={bulkDeleting}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkDeleteOpen(true)}
+                className="delete-confirm-btn px-4 py-2 text-xs"
+                disabled={bulkDeleting}
+              >
+                Delete selected
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="overflow-x-auto rounded-xl border border-white/5">
           <table className="vendors-table data-table w-full min-w-[1400px] text-left text-sm">
             <thead>
               <tr>
-                <th className="w-10"><input type="checkbox" className="rounded border-white/20 bg-white/5" /></th>
+                <th className="w-10">
+                  <input
+                    type="checkbox"
+                    className="rounded border-white/20 bg-white/5"
+                    checked={allSelected}
+                    ref={(input) => {
+                      if (input) input.indeterminate = someSelected
+                    }}
+                    onChange={toggleAll}
+                    aria-label="Select all products on this page"
+                    disabled={loadingProducts || filteredProducts.length === 0}
+                  />
+                </th>
                 <th>S.No</th>
                 <th>Image</th>
                 <th>Product Name</th>
@@ -1063,7 +1147,15 @@ export default function Products({ onNavigate }) {
                 </tr>
               ) : filteredProducts.map((product, index) => (
                 <tr key={product.id}>
-                  <td><input type="checkbox" className="rounded border-white/20 bg-white/5" /></td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      className="rounded border-white/20 bg-white/5"
+                      checked={isSelected(product.id)}
+                      onChange={() => toggleOne(product.id)}
+                      aria-label={`Select ${product.name}`}
+                    />
+                  </td>
                   <td className="text-slate-400">{index + 1}</td>
                   <td>
                     <div className="product-thumb">
@@ -1215,6 +1307,15 @@ export default function Products({ onNavigate }) {
         onConfirm={() => deleteProduct(deletingProduct.id)}
         itemName={deletingProduct?.name || ''}
         title="Delete Item"
+        confirming={Boolean(deletingId)}
+      />
+      <DeleteConfirmModal
+        open={bulkDeleteOpen}
+        onClose={() => !bulkDeleting && setBulkDeleteOpen(false)}
+        onConfirm={bulkDeleteProducts}
+        title="Delete Selected Products"
+        count={selectedCount}
+        confirming={bulkDeleting}
       />
     </section>
   )

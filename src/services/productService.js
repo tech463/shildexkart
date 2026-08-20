@@ -71,6 +71,11 @@ export const deleteProductAPI = async (id) => {
   return response.data
 }
 
+export const bulkDeleteProductsAPI = async (ids = []) => {
+  const response = await api.post('/v1/product/bulk-delete', { ids })
+  return response.data
+}
+
 export const downloadProductBulkSampleAPI = async () => {
   const response = await api.get('/v1/product/bulk-sample', {
     responseType: 'blob',
@@ -78,7 +83,7 @@ export const downloadProductBulkSampleAPI = async () => {
   return response.data
 }
 
-export const bulkUploadProductsAPI = async (file, action = 'draft') => {
+export const bulkUploadProductsAPI = async (file, action = 'publish') => {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('action', action)

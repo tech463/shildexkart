@@ -37,7 +37,7 @@ export default function ProductExcelUploadModal({
 }) {
   const inputRef = useRef(null)
   const [file, setFile] = useState(null)
-  const [action, setAction] = useState('draft')
+  const [action, setAction] = useState('publish')
   const [uploading, setUploading] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState('')
@@ -47,7 +47,7 @@ export default function ProductExcelUploadModal({
   useEffect(() => {
     if (!open) return undefined
     setFile(null)
-    setAction('draft')
+    setAction('publish')
     setError('')
     setSuccess('')
     setResult(null)

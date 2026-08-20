@@ -18,7 +18,7 @@ function triggerBlobDownload(blob, filename) {
 export default function BulkUploadProducts({ onNavigate }) {
   const inputRef = useRef(null)
   const [file, setFile] = useState(null)
-  const [action, setAction] = useState('draft')
+  const [action, setAction] = useState('publish')
   const [uploading, setUploading] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState('')

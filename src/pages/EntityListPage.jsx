@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import MainCategoryModal from '../components/MainCategoryModal'
+import { useRowSelection } from '../hooks/useRowSelection'
 import { PAGE_CONFIGS } from '../data/pages'
 import {
   createMainCategory,
@@ -356,6 +357,8 @@ export default function EntityListPage({ pageId, onNavigate }) {
   const [editingRow, setEditingRow] = useState(null)
   const [viewingRow, setViewingRow] = useState(null)
   const [deletingRow, setDeletingRow] = useState(null)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   const [toastSuccess, setToastSuccess] = useState('')
   const [toastError, setToastError] = useState('')
@@ -532,6 +535,17 @@ export default function EntityListPage({ pageId, onNavigate }) {
     ))
   }, [rows, query, status, startDate, endDate])
 
+  const {
+    selectedVisibleIds,
+    selectedCount,
+    allSelected,
+    someSelected,
+    isSelected,
+    toggleOne,
+    toggleAll,
+    clearSelection,
+  } = useRowSelection(filteredRows)
+
   // Hooks must be called unconditionally; these memos are used by category modal below.
   const mainCategoryOptions = useMemo(
     () => PAGE_CONFIGS['main-category']?.rows?.map((row) => row.name) || [],
@@ -553,6 +567,7 @@ export default function EntityListPage({ pageId, onNavigate }) {
   }
 
   const refresh = () => {
+    clearSelection()
     setQuery('')
     setStatus('')
     setStartDate('')
@@ -568,6 +583,35 @@ export default function EntityListPage({ pageId, onNavigate }) {
     }
     if (isUnitsPage) {
       dispatch(fetchUnits({ page: 1, limit: 10 }))
+    }
+  }
+
+  const reloadEntityRows = async () => {
+    if (isMainCategoryPage) {
+      await dispatch(fetchMainCategories({ page: 1, limit: 10 }))
+    } else if (isCategoryPage) {
+      await dispatch(fetchCategories({ page: 1, limit: 10 }))
+    } else if (isSubCategoryPage) {
+      await dispatch(fetchSubCategories({ page: 1, limit: 10 }))
+    } else if (isUnitsPage) {
+      await dispatch(fetchUnits({ page: 1, limit: 10 }))
+    }
+  }
+
+  const performDelete = async (id) => {
+    if (!isMainCategoryPage && !isCategoryPage && !isSubCategoryPage && !isUnitsPage) {
+      setRows((current) => current.filter((row) => row.id !== id))
+      return
+    }
+
+    if (isMainCategoryPage) {
+      await dispatch(deleteMainCategory(id)).unwrap()
+    } else if (isCategoryPage) {
+      await dispatch(deleteCategory(id)).unwrap()
+    } else if (isSubCategoryPage) {
+      await dispatch(deleteSubCategory(id)).unwrap()
+    } else if (isUnitsPage) {
+      await dispatch(deleteUnit(id)).unwrap()
     }
   }
 
@@ -601,36 +645,44 @@ export default function EntityListPage({ pageId, onNavigate }) {
   }
 
   const deleteRow = async (id) => {
-    if (!isMainCategoryPage && !isCategoryPage && !isSubCategoryPage && !isUnitsPage) {
-      setRows((current) => current.filter((row) => row.id !== id))
-      setDeletingRow(null)
-      return
-    }
-
     try {
+      await performDelete(id)
       if (isMainCategoryPage) {
-        await dispatch(deleteMainCategory(id)).unwrap()
         setToastSuccess('Main Category deleted successfully.')
-        setDeletingRow(null)
-        await dispatch(fetchMainCategories({ page: 1, limit: 10 }))
       } else if (isCategoryPage) {
-        await dispatch(deleteCategory(id)).unwrap()
         setToastSuccess('Category deleted successfully.')
-        setDeletingRow(null)
-        await dispatch(fetchCategories({ page: 1, limit: 10 }))
       } else if (isSubCategoryPage) {
-        await dispatch(deleteSubCategory(id)).unwrap()
         setToastSuccess('Sub Category deleted successfully.')
-        setDeletingRow(null)
-        await dispatch(fetchSubCategories({ page: 1, limit: 10 }))
       } else if (isUnitsPage) {
-        await dispatch(deleteUnit(id)).unwrap()
         setToastSuccess('Unit deleted successfully.')
-        setDeletingRow(null)
-        await dispatch(fetchUnits({ page: 1, limit: 10 }))
+      } else {
+        setToastSuccess('Item deleted successfully.')
       }
+      setDeletingRow(null)
+      await reloadEntityRows()
     } catch (error) {
       setToastError(error || 'Failed to delete item.')
+    }
+  }
+
+  const bulkDeleteRows = async () => {
+    const ids = selectedVisibleIds
+    if (!ids.length || bulkDeleting) return
+
+    setBulkDeleting(true)
+    setToastError('')
+    try {
+      for (const id of ids) {
+        await performDelete(id)
+      }
+      clearSelection()
+      setBulkDeleteOpen(false)
+      setToastSuccess(`${ids.length} item(s) deleted successfully.`)
+      await reloadEntityRows()
+    } catch (error) {
+      setToastError(error || 'Failed to delete selected items.')
+    } finally {
+      setBulkDeleting(false)
     }
   }
 
@@ -993,6 +1045,33 @@ export default function EntityListPage({ pageId, onNavigate }) {
             Product tags are not connected to the catalog API yet. Added tags stay in this browser session only and do not appear on products.
           </p>
         ) : null}
+
+        {selectedCount > 0 ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3">
+            <span className="text-sm font-medium text-slate-200">
+              {selectedCount} item{selectedCount === 1 ? '' : 's'} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="vendor-btn-cancel px-4 py-2 text-xs"
+                disabled={bulkDeleting}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkDeleteOpen(true)}
+                className="delete-confirm-btn px-4 py-2 text-xs"
+                disabled={bulkDeleting}
+              >
+                Delete selected
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <h3 className="font-display text-sm font-bold tracking-wide text-shield">{config.listTitle}</h3>
           <div className="flex flex-wrap items-center gap-2">
@@ -1025,7 +1104,19 @@ export default function EntityListPage({ pageId, onNavigate }) {
           <table className="vendors-table data-table w-full min-w-[1000px] text-left text-sm">
             <thead>
               <tr>
-                <th className="w-10"><input type="checkbox" className="rounded border-white/20 bg-white/5" /></th>
+                <th className="w-10">
+                  <input
+                    type="checkbox"
+                    className="rounded border-white/20 bg-white/5"
+                    checked={allSelected}
+                    ref={(input) => {
+                      if (input) input.indeterminate = someSelected
+                    }}
+                    onChange={toggleAll}
+                    aria-label="Select all items on this page"
+                    disabled={filteredRows.length === 0}
+                  />
+                </th>
                 <th>S.No</th>
                 {config.columns.map((column) => <th key={column}>{COLUMN_LABELS[column] || column}</th>)}
                 <th>Status</th>
@@ -1042,7 +1133,15 @@ export default function EntityListPage({ pageId, onNavigate }) {
                 </tr>
               ) : filteredRows.map((row, index) => (
                 <tr key={row.id}>
-                  <td><input type="checkbox" className="rounded border-white/20 bg-white/5" /></td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      className="rounded border-white/20 bg-white/5"
+                      checked={isSelected(row.id)}
+                      onChange={() => toggleOne(row.id)}
+                      aria-label={`Select ${row.name}`}
+                    />
+                  </td>
                   <td className="text-slate-400">{index + 1}</td>
                   {config.columns.map((column) => (
                     <td key={column} className={column === 'name' ? 'font-semibold text-slate-200' : 'text-slate-400'}>
@@ -1128,6 +1227,14 @@ export default function EntityListPage({ pageId, onNavigate }) {
         onConfirm={() => deleteRow(deletingRow.id)}
         itemName={deletingRow?.name || ''}
         title="Delete Item"
+      />
+      <DeleteConfirmModal
+        open={bulkDeleteOpen}
+        onClose={() => !bulkDeleting && setBulkDeleteOpen(false)}
+        onConfirm={bulkDeleteRows}
+        title="Delete Selected Items"
+        count={selectedCount}
+        confirming={bulkDeleting}
       />
     </section>
   )

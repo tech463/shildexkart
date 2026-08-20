@@ -19,7 +19,10 @@ export default function DeleteConfirmModal({
   onConfirm,
   itemName = '',
   title = 'Delete Item',
+  count = 1,
+  confirming = false,
 }) {
+  const isBulk = count > 1
   useEffect(() => {
     if (!open) return undefined
     const previousOverflow = document.body.style.overflow
@@ -55,15 +58,23 @@ export default function DeleteConfirmModal({
 
         <h3 id="delete-item-title" className="delete-confirm-title">{title}</h3>
         <p className="delete-confirm-text">
-          Are you sure you want to delete &quot;{itemName}&quot;? This action cannot be undone.
+          {isBulk ? (
+            <>
+              Are you sure you want to delete <strong>{count}</strong> selected items? This action cannot be undone.
+            </>
+          ) : (
+            <>
+              Are you sure you want to delete &quot;{itemName}&quot;? This action cannot be undone.
+            </>
+          )}
         </p>
 
         <div className="delete-confirm-actions">
-          <button type="button" onClick={onClose} className="vendor-btn-cancel w-full">
+          <button type="button" onClick={onClose} className="vendor-btn-cancel w-full" disabled={confirming}>
             Cancel
           </button>
-          <button type="button" onClick={onConfirm} className="delete-confirm-btn w-full">
-            Delete
+          <button type="button" onClick={onConfirm} className="delete-confirm-btn w-full" disabled={confirming}>
+            {confirming ? 'Deleting...' : (isBulk ? `Delete ${count}` : 'Delete')}
           </button>
         </div>
       </div>
