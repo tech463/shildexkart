@@ -110,6 +110,7 @@ export default function Wallet({ onNavigate }) {
             <table className="vendors-table data-table w-full min-w-[700px] text-left text-sm">
               <thead>
                 <tr>
+                  <th>S.No</th>
                   <th>Order</th>
                   <th>Amount</th>
                   <th>Type</th>
@@ -117,8 +118,9 @@ export default function Wallet({ onNavigate }) {
                 </tr>
               </thead>
               <tbody>
-                {recentPayments.map((payment) => (
+                {recentPayments.map((payment, index) => (
                   <tr key={payment.id}>
+                    <td className="text-slate-400">{index + 1}</td>
                     <td className="font-medium text-slate-200">{payment.order}</td>
                     <td className="text-slate-300">{payment.amount}</td>
                     <td className="text-slate-400 capitalize">{payment.type}</td>

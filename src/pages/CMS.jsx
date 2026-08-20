@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import CmsRichEditor from '../components/CmsRichEditor'
+import TablePagination from '../components/TablePagination'
+import usePagination from '../hooks/usePagination'
 import {
   createCMSAPI,
   deleteCMSAPI,
@@ -467,6 +469,8 @@ export default function CMS({ onNavigate }) {
     ))
   }, [cms, query])
 
+  const pagination = usePagination(filteredCms)
+
   const handleCMSSubmit = async (payload) => {
     if (modalMode === 'view') return
 
@@ -640,10 +644,10 @@ export default function CMS({ onNavigate }) {
                   <td colSpan={7} className="py-10 text-center text-sm text-slate-400">No CMS found.</td>
                 </tr>
               ) : (
-                filteredCms.map((item, index) => (
+                pagination.pageItems.map((item, index) => (
                   <tr key={item.id}>
                     <td><input type="checkbox" className="rounded border-white/20 bg-white/5" /></td>
-                    <td className="text-slate-400">{index + 1}</td>
+                    <td className="text-slate-400">{pagination.rangeStart + index}</td>
                     <td className="font-semibold text-slate-200">{item.title}</td>
                     <td className="text-slate-400">{item.slug}</td>
                     <td>
@@ -710,6 +714,15 @@ export default function CMS({ onNavigate }) {
             </tbody>
           </table>
         </div>
+
+        {!loadingCms && filteredCms.length > 0 ? (
+          <TablePagination
+            {...pagination}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.changePageSize}
+            itemLabel="pages"
+          />
+        ) : null}
       </div>
 
       <CMSModal

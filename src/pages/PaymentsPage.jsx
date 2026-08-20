@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import TablePagination from '../components/TablePagination'
+import usePagination from '../hooks/usePagination'
 import { errMsg, fetchPaymentsAPI } from '../services/orderService'
 
 function money(value) {
@@ -41,6 +43,8 @@ export default function PaymentsPage() {
   useEffect(() => {
     load()
   }, [load])
+
+  const pagination = usePagination(rows)
 
   return (
     <div className="space-y-6">
@@ -95,6 +99,7 @@ export default function PaymentsPage() {
         <table className="min-w-full text-left text-sm">
           <thead className="bg-slate-950/80 text-xs uppercase tracking-wide text-slate-500">
             <tr>
+              <th className="px-4 py-3">S.No</th>
               <th className="px-4 py-3">Order</th>
               <th className="px-4 py-3">Invoice</th>
               <th className="px-4 py-3">Method</th>
@@ -106,12 +111,13 @@ export default function PaymentsPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">Loading...</td></tr>
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500">Loading...</td></tr>
             ) : !rows.length ? (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">No payments yet.</td></tr>
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500">No payments yet.</td></tr>
             ) : (
-              rows.map((row) => (
+              pagination.pageItems.map((row, index) => (
                 <tr key={row.id} className="border-t border-slate-800">
+                  <td className="px-4 py-3 text-slate-400">{pagination.rangeStart + index}</td>
                   <td className="px-4 py-3 font-semibold text-sky-400">
                     <Link to={`/orders?orderId=${row.order_id}`} className="hover:underline">
                       {row.order?.order_number || `#${row.order_id}`}
@@ -139,6 +145,17 @@ export default function PaymentsPage() {
             )}
           </tbody>
         </table>
+
+        {!loading && rows.length > 0 ? (
+          <div className="px-4 pb-4">
+            <TablePagination
+              {...pagination}
+              onPageChange={pagination.setPage}
+              onPageSizeChange={pagination.changePageSize}
+              itemLabel="payments"
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   )

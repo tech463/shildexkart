@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
+import TablePagination from '../components/TablePagination'
+import usePagination from '../hooks/usePagination'
 import { DISCOUNT_TYPES } from '../data/coupons'
 import {
   createCoupon,
@@ -605,6 +607,8 @@ export default function Coupons({ onNavigate }) {
     ))
   }, [coupons, query, startDate, endDate])
 
+  const pagination = usePagination(filteredCoupons)
+
   const closeModal = () => {
     setModalOpen(false)
     setEditingCoupon(null)
@@ -747,6 +751,7 @@ export default function Coupons({ onNavigate }) {
           <table className="vendors-table data-table coupons-table w-full min-w-[1100px] text-left text-sm">
             <thead>
               <tr>
+                <th>S.No</th>
                 <th>Code</th>
                 <th>Description</th>
                 <th>Discount</th>
@@ -761,21 +766,22 @@ export default function Coupons({ onNavigate }) {
             <tbody>
               {couponState.loading ? (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-sm text-slate-400">
+                  <td colSpan={10} className="py-10 text-center text-sm text-slate-400">
                     Loading coupons...
                   </td>
                 </tr>
               ) : filteredCoupons.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-sm text-slate-500">
+                  <td colSpan={10} className="py-10 text-center text-sm text-slate-500">
                     No coupons found
                   </td>
                 </tr>
-              ) : filteredCoupons.map((row) => {
+              ) : pagination.pageItems.map((row, index) => {
                 const percent = usagePercent(row.usage, row.usageLimit)
                 const expired = row.expiryLabel === 'Expired' || row.status === 'Expired'
                 return (
                   <tr key={row.id}>
+                    <td className="text-slate-400">{pagination.rangeStart + index}</td>
                     <td>
                       <span className="coupon-code-badge">{row.code}</span>
                     </td>
@@ -844,6 +850,15 @@ export default function Coupons({ onNavigate }) {
             </tbody>
           </table>
         </div>
+
+        {!couponState.loading && filteredCoupons.length > 0 ? (
+          <TablePagination
+            {...pagination}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.changePageSize}
+            itemLabel="coupons"
+          />
+        ) : null}
       </div>
 
       <CouponModal

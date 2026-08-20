@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
+import TablePagination from '../components/TablePagination'
+import usePagination from '../hooks/usePagination'
 import {
   deleteInvoiceAPI,
   errMsg,
@@ -36,6 +38,15 @@ function formatRupee(amount) {
   const value = Number(amount)
   if (!Number.isFinite(value)) return '₹ 0'
   return `₹ ${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 function invoiceStatusClass(status) {
@@ -211,7 +222,7 @@ function InvoiceEditModal({ open, onClose, invoice, onSubmit, saving }) {
           </div>
           <div className="vendor-modal-footer flex gap-2">
             <button type="button" onClick={onClose} className="vendor-btn-cancel flex-1">Cancel</button>
-            <button type="submit" disabled={saving} className="btn-add flex-1 justify-center !rounded-xl">
+            <button type="submit" disabled={saving} className="btn-add btn-add-text flex-1 justify-center">
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
@@ -286,8 +297,10 @@ export default function Invoices({ onNavigate }) {
 
   const filteredInvoices = useMemo(() => invoices, [invoices])
 
-  const allVisibleSelected = filteredInvoices.length > 0
-    && filteredInvoices.every((row) => selectedIds.includes(row.id))
+  const pagination = usePagination(filteredInvoices)
+
+  const allVisibleSelected = pagination.pageItems.length > 0
+    && pagination.pageItems.every((row) => selectedIds.includes(row.id))
 
   const goOrder = (invoice) => {
     if (!invoice?.order_id) return
@@ -300,30 +313,78 @@ export default function Invoices({ onNavigate }) {
   }
 
   const printInvoice = (invoice) => {
-    const lines = [
-      `Invoice: ${invoice.invoiceId}`,
-      `Order: ${invoice.order_number || invoice.order_id}`,
-      `Client: ${invoice.clientName}`,
-      `Email: ${invoice.clientEmail}`,
-      `Phone: ${invoice.phone}`,
-      `Total: ${formatRupee(invoice.totalAmount)}`,
-      `Payment Mode: ${invoice.paymentMode}`,
-      `Issued: ${invoice.issuedDate}`,
-      `Invoice Status: ${invoice.invoiceStatus}`,
-      `Order Status: ${invoice.orderStatus}`,
+    const rows = [
+      ['Invoice', invoice.invoiceId],
+      ['Order', invoice.order_number || invoice.order_id],
+      ['Client', invoice.clientName],
+      ['Email', invoice.clientEmail],
+      ['Phone', invoice.phone],
+      ['Payment Mode', invoice.paymentMode],
+      ['Issued', invoice.issuedDate],
+      ['Invoice Status', invoice.invoiceStatus],
+      ['Order Status', invoice.orderStatus],
     ]
-    if ((invoice.items || []).length) {
-      lines.push('', 'Items:')
-      invoice.items.forEach((item) => {
-        lines.push(`- ${item.product_title} x${item.qty} = ${formatRupee(item.line_total)}`)
-      })
+
+    const itemRows = (invoice.items || []).map((item) => `
+      <tr>
+        <td>${escapeHtml(item.product_title)}</td>
+        <td class="num">${escapeHtml(item.qty)}</td>
+        <td class="num">${escapeHtml(formatRupee(item.line_total))}</td>
+      </tr>`).join('')
+
+    const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(invoice.invoiceId || 'Invoice')}</title>
+    <style>
+      body { font: 14px/1.6 ui-sans-serif, system-ui, sans-serif; color: #111; margin: 32px; }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      .muted { color: #666; font-size: 12px; margin: 0 0 20px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+      th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #ddd; }
+      th { background: #f4f4f5; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+      td.num, th.num { text-align: right; }
+      .meta td:first-child { width: 180px; color: #666; }
+      .total { font-size: 16px; font-weight: 700; text-align: right; }
+      @media print { body { margin: 12px; } }
+    </style>
+  </head>
+  <body>
+    <h1>Invoice ${escapeHtml(invoice.invoiceId || '')}</h1>
+    <p class="muted">ShieldX Ecommerce</p>
+
+    <table class="meta">
+      ${rows.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value ?? '-')}</td></tr>`).join('')}
+    </table>
+
+    ${itemRows ? `
+    <table>
+      <thead>
+        <tr><th>Item</th><th class="num">Qty</th><th class="num">Amount</th></tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>` : ''}
+
+    <p class="total">Total: ${escapeHtml(formatRupee(invoice.totalAmount))}</p>
+
+    <script>
+      setTimeout(function () {
+        window.focus()
+        window.print()
+      }, 200)
+    <\/script>
+  </body>
+</html>`
+
+    const printWindow = window.open('', '_blank', 'width=820,height=720')
+    if (!printWindow) {
+      setError('Please allow pop-ups for this site to print the invoice.')
+      return
     }
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=720,height=640')
-    if (!printWindow) return
-    printWindow.document.write(`<pre style="font:14px/1.5 ui-sans-serif,system-ui">${lines.join('\n')}</pre>`)
+    printWindow.document.open()
+    printWindow.document.write(html)
     printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
   }
 
   const handleSync = async () => {
@@ -401,8 +462,8 @@ export default function Invoices({ onNavigate }) {
             <h3 className="font-display text-sm font-bold tracking-wide text-shield">Invoices List</h3>
             <p className="mt-1 text-xs text-slate-500">Auto-linked to Orders and Payments. Sync keeps invoices up to date.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
+            <div className="relative w-full sm:w-auto">
               <span className="icon-3d icon-3d-xs icon-3d-muted icon-3d-flat icon-3d-input">
                 <Icon path={paths.search} />
               </span>
@@ -439,11 +500,18 @@ export default function Invoices({ onNavigate }) {
               className="glass-input date-filter-input rounded-xl px-3 py-2 text-sm sm:w-40"
               aria-label="End date"
             />
-            <button type="button" onClick={load} className="btn-glass flex h-10 w-10 items-center justify-center rounded-xl" aria-label="Refresh">
+            <button type="button" onClick={load} className="btn-glass flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" aria-label="Refresh">
               <Icon path={paths.refresh} />
             </button>
-            <button type="button" disabled={saving} onClick={handleSync} className="btn-add !px-3 text-xs font-bold">
-              Sync from Orders
+            <button
+              type="button"
+              disabled={saving}
+              onClick={handleSync}
+              className="btn-add btn-add-text btn-add-full"
+              title="Create/update invoices from existing orders"
+            >
+              <Icon path={paths.refresh} />
+              <span>{saving ? 'Syncing...' : 'Sync from Orders'}</span>
             </button>
           </div>
         </div>
@@ -458,10 +526,10 @@ export default function Invoices({ onNavigate }) {
                     checked={allVisibleSelected}
                     onChange={() => {
                       if (allVisibleSelected) {
-                        setSelectedIds((current) => current.filter((id) => !filteredInvoices.some((row) => row.id === id)))
+                        setSelectedIds((current) => current.filter((id) => !pagination.pageItems.some((row) => row.id === id)))
                         return
                       }
-                      setSelectedIds((current) => [...new Set([...current, ...filteredInvoices.map((row) => row.id)])])
+                      setSelectedIds((current) => [...new Set([...current, ...pagination.pageItems.map((row) => row.id)])])
                     }}
                     aria-label="Select all invoices"
                   />
@@ -489,7 +557,7 @@ export default function Invoices({ onNavigate }) {
                     No invoices yet. Place an order or click Sync from Orders.
                   </td>
                 </tr>
-              ) : filteredInvoices.map((row, index) => (
+              ) : pagination.pageItems.map((row, index) => (
                 <tr key={row.id}>
                   <td>
                     <input
@@ -501,7 +569,7 @@ export default function Invoices({ onNavigate }) {
                       aria-label={`Select ${row.invoiceId}`}
                     />
                   </td>
-                  <td className="whitespace-nowrap text-slate-400">{index + 1}</td>
+                  <td className="whitespace-nowrap text-slate-400">{pagination.rangeStart + index}</td>
                   <td className="whitespace-nowrap">
                     <button
                       type="button"
@@ -571,6 +639,15 @@ export default function Invoices({ onNavigate }) {
             </tbody>
           </table>
         </div>
+
+        {!loading && filteredInvoices.length > 0 ? (
+          <TablePagination
+            {...pagination}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.changePageSize}
+            itemLabel="invoices"
+          />
+        ) : null}
       </div>
 
       <InvoiceViewModal

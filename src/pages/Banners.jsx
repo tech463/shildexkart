@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
+import TablePagination from '../components/TablePagination'
+import usePagination from '../hooks/usePagination'
 import { BANNER_POSITIONS } from '../data/banners'
 import {
   createBannerAPI,
@@ -551,6 +553,8 @@ export default function Banners({ onNavigate }) {
     ))
   }, [banners, query, position, status, startDate, endDate])
 
+  const pagination = usePagination(filteredBanners)
+
   const refresh = async () => {
     setQuery('')
     setPosition('')
@@ -804,10 +808,10 @@ export default function Banners({ onNavigate }) {
                     No banners found for the selected filters.
                   </td>
                 </tr>
-              ) : filteredBanners.map((banner, index) => (
+              ) : pagination.pageItems.map((banner, index) => (
                 <tr key={banner.id}>
                   <td><input type="checkbox" className="rounded border-white/20 bg-white/5" /></td>
-                  <td className="text-slate-400">{index + 1}</td>
+                  <td className="text-slate-400">{pagination.rangeStart + index}</td>
                   <td>
                     <BannerThumb src={banner.imageUrl} alt={banner.title || banner.positionLabel} />
                   </td>
@@ -869,6 +873,15 @@ export default function Banners({ onNavigate }) {
             </tbody>
           </table>
         </div>
+
+        {!loadingBanners && filteredBanners.length > 0 ? (
+          <TablePagination
+            {...pagination}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.changePageSize}
+            itemLabel="banners"
+          />
+        ) : null}
       </div>
 
       <BannerModal

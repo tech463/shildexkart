@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import ProductExcelUploadModal from '../components/ProductExcelUploadModal'
 import { useRowSelection } from '../hooks/useRowSelection'
+import TablePagination from '../components/TablePagination'
+import usePagination from '../hooks/usePagination'
 import {
   APPROVAL_STATUS_OPTIONS,
   VENDOR_STATUS_OPTIONS,
@@ -763,6 +765,7 @@ export default function Products({ onNavigate }) {
     toggleAll,
     clearSelection,
   } = useRowSelection(filteredProducts)
+  const pagination = usePagination(filteredProducts)
 
   const refresh = () => {
     clearSelection()
@@ -1145,7 +1148,7 @@ export default function Products({ onNavigate }) {
                     {toastError ? 'Could not load products.' : 'No products found for the selected filters.'}
                   </td>
                 </tr>
-              ) : filteredProducts.map((product, index) => (
+              ) : pagination.pageItems.map((product, index) => (
                 <tr key={product.id}>
                   <td>
                     <input
@@ -1157,6 +1160,8 @@ export default function Products({ onNavigate }) {
                     />
                   </td>
                   <td className="text-slate-400">{index + 1}</td>
+                  <td><input type="checkbox" className="rounded border-white/20 bg-white/5" /></td>
+                  <td className="text-slate-400">{pagination.rangeStart + index}</td>
                   <td>
                     <div className="product-thumb">
                       {product.imageUrl ? (
@@ -1276,6 +1281,15 @@ export default function Products({ onNavigate }) {
             </tbody>
           </table>
         </div>
+
+        {!loadingProducts && filteredProducts.length > 0 ? (
+          <TablePagination
+            {...pagination}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.changePageSize}
+            itemLabel="products"
+          />
+        ) : null}
       </div>
 
       <ProductModal
