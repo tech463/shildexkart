@@ -748,7 +748,7 @@ export default function Products({ onNavigate }) {
     const boot = async () => {
       loadProducts()
 
-      const repairKey = 'shieldx-product-image-repair-v1'
+      const repairKey = 'shieldx-product-image-repair-v2'
       try {
         if (!sessionStorage.getItem(repairKey)) {
           sessionStorage.setItem(repairKey, '1')

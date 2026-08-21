@@ -125,7 +125,7 @@ export default function ProductExcelUploadModal({
 
         <div className="vendor-modal-body space-y-4">
           <p className="text-sm text-slate-400">
-            Download the sample Excel, fill product rows (including{' '}
+            Download the sample Excel (live DB products). Edit rows as needed. Include{' '}
             <code className="text-brand-300">cover_image_url</code> /{' '}
             <code className="text-brand-300">gallery_urls</code>), then upload here.
           </p>

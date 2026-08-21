@@ -103,7 +103,7 @@ export default function BulkUploadProducts({ onNavigate }) {
           </nav>
           <h2 className="title-xl !text-2xl">Bulk Upload Products</h2>
           <p className="mt-1 text-sm text-slate-400">
-            Upload many products at once using the sample Excel template.
+            Upload many products at once. The sample Excel is filled from live products and categories.
           </p>
         </div>
         <button
@@ -121,9 +121,9 @@ export default function BulkUploadProducts({ onNavigate }) {
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
           <p className="font-semibold text-slate-100">How it works</p>
           <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-400">
-            <li>Download the sample Excel file.</li>
+            <li>Download the sample Excel (current products + category reference from DB).</li>
             <li>
-              Replace sample rows with your products. Keep the column headers unchanged.
+              Edit or copy rows as needed. Keep the column headers unchanged.
             </li>
             <li>
               Category columns must match Master names (Main / Category / Sub-category).
