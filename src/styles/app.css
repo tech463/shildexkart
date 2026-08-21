@@ -632,6 +632,24 @@
       box-shadow: 0 0 0 3px rgba(0, 163, 255, 0.12);
     }
 
+    /*
+      Native <select> menus often paint a light OS background while inheriting
+      the dark theme's light text — force readable open-menu options.
+    */
+    select,
+    select.glass-input {
+      color-scheme: dark;
+    }
+    select option,
+    select optgroup {
+      background-color: #0f172a;
+      color: #e2e8f0;
+    }
+    select option:checked {
+      background-color: #007bff;
+      color: #ffffff;
+    }
+
     /* ── Table pagination ── */
     .table-pagination {
       display: flex;
