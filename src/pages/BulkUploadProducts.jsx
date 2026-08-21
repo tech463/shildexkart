@@ -230,7 +230,7 @@ export default function BulkUploadProducts({ onNavigate }) {
               <div className="overflow-x-auto rounded-xl border border-white/10">
                 <table className="w-full min-w-[520px] text-left text-sm">
                   <thead>
-                    <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-slate-500">
+                    <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-slate-300">
                       <th className="px-3 py-2">Row</th>
                       <th className="px-3 py-2">Title</th>
                       <th className="px-3 py-2">Error</th>

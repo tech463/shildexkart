@@ -225,6 +225,7 @@ export default function AddProduct({ onNavigate }) {
   const [description, setDescription] = useState('')
   const [sku, setSku] = useState('')
   const [stockStatus, setStockStatus] = useState('In Stock')
+  const [stockQty, setStockQty] = useState('0')
   const [manageStock, setManageStock] = useState(false)
   const [soldIndividually, setSoldIndividually] = useState(false)
   const [productStatus, setProductStatus] = useState('Draft')
@@ -449,6 +450,7 @@ export default function AddProduct({ onNavigate }) {
         setShortDescription(product.short_description || '')
         setDescription(product.description || '')
         setStockStatus(product.stock_status || 'In Stock')
+        setStockQty(String(product.stock_qty ?? product.stock ?? '0'))
         setManageStock(Boolean(product.manage_stock))
         setSoldIndividually(Boolean(product.allow_backorder))
         setVirtual(product.product_type === 'digital')
@@ -585,6 +587,7 @@ export default function AddProduct({ onNavigate }) {
     description,
     price,
     discounted_price: discountedPrice,
+    stock_qty: stockQty,
     stock_status: stockStatus,
     manage_stock: manageStock,
     allow_backorder: soldIndividually,
@@ -1050,6 +1053,19 @@ export default function AddProduct({ onNavigate }) {
                 />
                 Track stock quantity
               </label>
+              {manageStock ? (
+                <div>
+                  <FieldLabel>Stock quantity</FieldLabel>
+                  <input
+                    type="number"
+                    min="0"
+                    value={stockQty}
+                    onChange={(event) => setStockQty(event.target.value)}
+                    className="glass-input vendor-field-input"
+                    disabled={submitting}
+                  />
+                </div>
+              ) : null}
               <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-slate-300">
                 <input
                   type="checkbox"

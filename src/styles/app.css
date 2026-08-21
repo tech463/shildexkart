@@ -612,11 +612,11 @@
 
     .breadcrumb {
       font-size: 0.8125rem;
-      color: rgba(192, 192, 192, 0.55);
+      color: #94a3b8;
     }
     .breadcrumb a { color: #00A3FF; transition: color 0.2s; }
     .breadcrumb a:hover { color: #66cfff; }
-    .breadcrumb span { color: rgba(224, 224, 224, 0.7); }
+    .breadcrumb span { color: #cbd5e1; }
 
     .glass-input {
       background: rgba(255, 255, 255, 0.04);
@@ -625,7 +625,7 @@
       backdrop-filter: blur(8px);
       transition: border-color 0.25s, box-shadow 0.25s;
     }
-    .glass-input::placeholder { color: rgba(148, 163, 184, 0.6); }
+    .glass-input::placeholder { color: #94a3b8; }
     .glass-input:focus {
       outline: none;
       border-color: rgba(0, 163, 255, 0.45);
@@ -633,21 +633,56 @@
     }
 
     /*
-      Native <select> menus often paint a light OS background while inheriting
-      the dark theme's light text — force readable open-menu options.
+      Dark theme form controls — Windows/Chrome often paint light native menus
+      while inheriting light text (white-on-white). Force readable contrast app-wide.
     */
     select,
-    select.glass-input {
+    select.glass-input,
+    input[type="date"],
+    input[type="time"],
+    input[type="datetime-local"],
+    input[type="month"],
+    input[type="week"],
+    .date-filter-input {
       color-scheme: dark;
+      color: #e2e8f0;
+    }
+    select,
+    select.glass-input {
+      background-color: #0b1220;
     }
     select option,
     select optgroup {
-      background-color: #0f172a;
-      color: #e2e8f0;
+      background-color: #0f172a !important;
+      color: #f1f5f9 !important;
     }
-    select option:checked {
-      background-color: #007bff;
-      color: #ffffff;
+    select option:checked,
+    select option:focus {
+      background-color: #007bff !important;
+      color: #ffffff !important;
+    }
+    input[type="date"]::-webkit-calendar-picker-indicator,
+    input[type="time"]::-webkit-calendar-picker-indicator,
+    input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+      filter: invert(0.85);
+      opacity: 0.9;
+      cursor: pointer;
+    }
+
+    /* Table headers & muted chrome — readable on black surfaces */
+    .data-table thead th,
+    .vendors-table thead th,
+    .coupons-table thead th,
+    .invoices-table thead th,
+    table thead th {
+      color: #cbd5e1 !important;
+      font-weight: 700;
+    }
+    thead.text-slate-500,
+    thead.text-slate-600,
+    thead .text-slate-500,
+    thead .text-slate-600 {
+      color: #cbd5e1 !important;
     }
 
     /* ── Table pagination ── */
@@ -667,7 +702,7 @@
       align-items: center;
       gap: 0.75rem;
       font-size: 0.75rem;
-      color: rgba(192, 192, 192, 0.6);
+      color: #94a3b8;
     }
     .table-pagination-info strong {
       color: #e2e8f0;
@@ -739,7 +774,7 @@
       font-size: 0.65rem;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: rgba(192, 192, 192, 0.6);
+      color: #cbd5e1;
       padding: 0.875rem 0.75rem;
       white-space: nowrap;
     }
@@ -2252,9 +2287,9 @@
       min-width: 10.5rem;
     }
     .date-filter-input::-webkit-calendar-picker-indicator {
-      filter: invert(0.7);
+      filter: invert(0.85);
       cursor: pointer;
-      opacity: 0.8;
+      opacity: 0.9;
     }
 
     .toggle-switch {

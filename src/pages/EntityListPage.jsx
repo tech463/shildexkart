@@ -401,7 +401,41 @@ export default function EntityListPage({ pageId, onNavigate }) {
     })
   )
 
-  const normalizeCategoryRows = (items = []) => (
+  const nameById = (list = []) => {
+    const map = new Map()
+    list.forEach((row) => {
+      if (row?.id == null) return
+      const label = row?.name ?? row?.label
+      if (label) map.set(String(row.id), label)
+    })
+    return map
+  }
+
+  const resolveParentName = (item, {
+    nestedKeys = [],
+    idKeys = [],
+    lookup = new Map(),
+  } = {}) => {
+    for (const key of nestedKeys) {
+      const nested = item?.[key]
+      const name = typeof nested === 'object' ? nested?.name : null
+      if (name) return name
+    }
+
+    for (const key of idKeys) {
+      const raw = item?.[key]
+      if (raw == null || raw === '') continue
+      if (typeof raw === 'object' && raw?.name) return raw.name
+      const asString = String(raw)
+      if (lookup.has(asString)) return lookup.get(asString)
+      // Avoid showing bare numeric ids in the Parent column
+      if (!/^\d+$/.test(asString)) return asString
+    }
+
+    return '—'
+  }
+
+  const normalizeCategoryRows = (items = [], mainLookup = new Map()) => (
     items.map((item) => {
       const name = item?.name ?? ''
       const createdRaw = item?.created_at ?? item?.created ?? item?.createdAt
@@ -410,12 +444,17 @@ export default function EntityListPage({ pageId, onNavigate }) {
       const created = createdRaw ? formatTimestamp(new Date(createdRaw)) : ''
       const updated = updatedRaw ? formatTimestamp(new Date(updatedRaw)) : ''
 
-      const parentName = item?.main_category?.name ?? item?.parent ?? ''
+      const parentName = resolveParentName(item, {
+        nestedKeys: ['mainCategory', 'main_category'],
+        idKeys: ['main_category_id', 'mainCategoryId', 'parent', 'parent_id'],
+        lookup: mainLookup,
+      })
 
       return {
         id: item?.id ?? item?._id ?? Date.now(),
         name,
         parent: parentName,
+        parentId: item?.main_category_id ?? item?.mainCategoryId ?? item?.mainCategory?.id ?? null,
         items: item?.items ?? 0,
         icon: item?.icon ? { id: item.icon, label: item.icon, color: '#22c55e', size: 18 } : null,
         sort_order: item?.sort_order ?? item?.sortOrder ?? 0,
@@ -426,7 +465,7 @@ export default function EntityListPage({ pageId, onNavigate }) {
     })
   )
 
-  const normalizeSubCategoryRows = (items = []) => (
+  const normalizeSubCategoryRows = (items = [], categoryLookup = new Map()) => (
     items.map((item) => {
       const name = item?.name ?? ''
       const createdRaw = item?.created_at ?? item?.created ?? item?.createdAt
@@ -435,13 +474,17 @@ export default function EntityListPage({ pageId, onNavigate }) {
       const created = createdRaw ? formatTimestamp(new Date(createdRaw)) : ''
       const updated = updatedRaw ? formatTimestamp(new Date(updatedRaw)) : ''
 
-      const parentName =
-        item?.category?.name ?? item?.category_name ?? item?.parent ?? ''
+      const parentName = resolveParentName(item, {
+        nestedKeys: ['category'],
+        idKeys: ['category_id', 'categoryId', 'category_name', 'parent', 'parent_id'],
+        lookup: categoryLookup,
+      })
 
       return {
         id: item?.id ?? item?._id ?? Date.now(),
         name,
         parent: parentName,
+        parentId: item?.category_id ?? item?.categoryId ?? item?.category?.id ?? null,
         items: item?.items ?? 0,
         icon: item?.icon ? { id: item.icon, label: item.icon, color: '#22c55e', size: 18 } : null,
         sort_order: item?.sort_order ?? item?.sortOrder ?? 0,
@@ -490,7 +533,7 @@ export default function EntityListPage({ pageId, onNavigate }) {
 
   useEffect(() => {
     if (!isMainCategoryPage && !isCategoryPage) return
-    dispatch(fetchMainCategories({ page: 1, limit: 10 }))
+    dispatch(fetchMainCategories({ page: 1, limit: 500 }))
   }, [dispatch, isMainCategoryPage, isCategoryPage])
 
   useEffect(() => {
@@ -500,23 +543,25 @@ export default function EntityListPage({ pageId, onNavigate }) {
 
   useEffect(() => {
     if (!isCategoryPage && !isSubCategoryPage) return
-    dispatch(fetchCategories({ page: 1, limit: 10 }))
+    dispatch(fetchCategories({ page: 1, limit: 500 }))
   }, [dispatch, isCategoryPage, isSubCategoryPage])
 
   useEffect(() => {
     if (!isCategoryPage) return
-    setRows(normalizeCategoryRows(categoryState?.rows || []))
-  }, [isCategoryPage, categoryState?.rows])
+    const mainLookup = nameById(mainCategoryState?.rows || [])
+    setRows(normalizeCategoryRows(categoryState?.rows || [], mainLookup))
+  }, [isCategoryPage, categoryState?.rows, mainCategoryState?.rows])
 
   useEffect(() => {
     if (!isSubCategoryPage) return
-    dispatch(fetchSubCategories({ page: 1, limit: 10 }))
+    dispatch(fetchSubCategories({ page: 1, limit: 500 }))
   }, [dispatch, isSubCategoryPage])
 
   useEffect(() => {
     if (!isSubCategoryPage) return
-    setRows(normalizeSubCategoryRows(subCategoryState?.rows || []))
-  }, [isSubCategoryPage, subCategoryState?.rows])
+    const categoryLookup = nameById(categoryState?.rows || [])
+    setRows(normalizeSubCategoryRows(subCategoryState?.rows || [], categoryLookup))
+  }, [isSubCategoryPage, subCategoryState?.rows, categoryState?.rows])
 
   useEffect(() => {
     if (!isUnitsPage) return
@@ -1145,8 +1190,6 @@ export default function EntityListPage({ pageId, onNavigate }) {
                       aria-label={`Select ${row.name}`}
                     />
                   </td>
-                  <td className="text-slate-400">{index + 1}</td>
-                  <td><input type="checkbox" className="rounded border-white/20 bg-white/5" /></td>
                   <td className="text-slate-400">{pagination.rangeStart + index}</td>
                   {config.columns.map((column) => (
                     <td key={column} className={column === 'name' ? 'font-semibold text-slate-200' : 'text-slate-400'}>

@@ -97,7 +97,7 @@ export default function PaymentsPage() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60">
         <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-950/80 text-xs uppercase tracking-wide text-slate-500">
+          <thead className="bg-slate-950/80 text-xs uppercase tracking-wide text-slate-300">
             <tr>
               <th className="px-4 py-3">S.No</th>
               <th className="px-4 py-3">Order</th>

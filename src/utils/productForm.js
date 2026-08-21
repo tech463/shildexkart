@@ -21,7 +21,12 @@ export function buildProductFormData(fields, { action = 'draft', coverFile = nul
   append('description', fields.description || '')
   append('price', fields.price ?? '0')
   append('discounted_price', fields.discounted_price ?? '0')
-  append('stock_qty', fields.stock_qty ?? fields.stock ?? '0')
+  // Only send stock when the form provides it — otherwise updates wipe inventory to 0.
+  if (fields.stock_qty !== undefined && fields.stock_qty !== null && fields.stock_qty !== '') {
+    append('stock_qty', String(fields.stock_qty))
+  } else if (fields.stock !== undefined && fields.stock !== null && fields.stock !== '') {
+    append('stock_qty', String(fields.stock))
+  }
   append('stock_status', fields.stock_status || 'In Stock')
   append('manage_stock', String(Boolean(fields.manage_stock)))
   append('allow_backorder', String(Boolean(fields.allow_backorder)))
